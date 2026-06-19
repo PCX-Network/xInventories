@@ -21,10 +21,12 @@ jobs:
       - name: Checkout repository
         uses: actions/checkout@v6
 
-      - name: Set up JDK 25
+      # Detekt 1.23.8 (latest release) can't run on JDK 25. The detekt task runs in-process and does
+      # not compile against paper-api, so this job runs on JDK 21 (no JDK 25 needed for linting).
+      - name: Set up JDK 21
         uses: actions/setup-java@v5
         with:
-          java-version: '25'
+          java-version: '21'
           distribution: 'temurin'
 
       - name: Setup Gradle
