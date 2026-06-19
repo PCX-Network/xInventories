@@ -11,7 +11,7 @@ plugins {
 }
 
 group = 'sh.pcx'
-version = '1.1.0'
+version = '1.2.0'
 
 // Library versions - used in both dependencies and plugin.yml
 ext {
@@ -61,8 +61,10 @@ repositories {
 }
 
 dependencies {
-    // Paper API - targeting 1.21.11 (supports 1.20.5+)
-    compileOnly 'io.papermc.paper:paper-api:1.21.11-R0.1-SNAPSHOT'
+    // Paper API - targeting 26.1.2 (supports 1.20.5+ at runtime via VersionDetector/compat shims)
+    // Note: Paper switched to year-based versioning at 26.1; the coordinate format changed from
+    // "{VERSION}-R0.1-SNAPSHOT" to "{VERSION}.build.{N}-stable" (no more -SNAPSHOT).
+    compileOnly 'io.papermc.paper:paper-api:26.1.2.build.71-stable'
 
     // Kotlin - provided by Paper 1.21+, loaded via plugin.yml libraries for 1.20.5-1.20.6
     compileOnly 'org.jetbrains.kotlin:kotlin-stdlib'
@@ -117,8 +119,8 @@ dependencies {
     testImplementation "com.github.ben-manes.caffeine:caffeine:${caffeineVersion}"
     testImplementation "com.zaxxer:HikariCP:${hikariVersion}"
     testImplementation "redis.clients:jedis:${jedisVersion}"
-    testImplementation 'io.papermc.paper:paper-api:1.21.11-R0.1-SNAPSHOT'
-    testImplementation('org.mockbukkit.mockbukkit:mockbukkit-v1.21:4.101.0') {
+    testImplementation 'io.papermc.paper:paper-api:26.1.2.build.71-stable'
+    testImplementation('org.mockbukkit.mockbukkit:mockbukkit-v26.1.2:4.113.2') {
         exclude group: 'org.jetbrains.kotlin'
         exclude group: 'org.jetbrains.kotlinx'
     }
@@ -137,7 +139,33 @@ dependencies {
 }
 
 kotlin {
-    jvmToolchain(21)
+    // Toolchain is JDK 25 because paper-api 26.1.2 (Minecraft 26.1) requires Java 25 to compile.
+    jvmToolchain(25)
+
+    // ...but emit Java 21 bytecode and restrict to the Java 21 API surface so the SAME jar still
+    // loads & runs on Java 21 servers (Minecraft 1.20.5 - 1.21.x). The plugin uses no 26.1-only
+    // API directly; version-specific behavior is handled at runtime via VersionDetector/compat.
+    compilerOptions {
+        jvmTarget.set(org.jetbrains.kotlin.gradle.dsl.JvmTarget.JVM_21)
+        freeCompilerArgs.add("-Xjdk-release=21")
+    }
+}
+
+// The Java loader (XInventoriesLoader) is the server's entry point and MUST be Java 21 bytecode so
+// it loads on Java 21 servers. --release 21 also restricts to the Java 21 platform API.
+tasks.withType(JavaCompile).configureEach {
+    options.release = 21
+}
+
+// Downtargeting to Java 21 (above) makes Gradle advertise this consumer as JVM 21, which would
+// reject paper-api 26.1.2 (published for JVM 25). Override the target-JVM attribute on the compile
+// and test classpaths so the Java-25 paper-api variant resolves while our own bytecode stays at 21.
+['compileClasspath', 'testCompileClasspath', 'testRuntimeClasspath'].each { cfgName ->
+    configurations.named(cfgName).configure {
+        attributes {
+            attribute(org.gradle.api.attributes.java.TargetJvmVersion.TARGET_JVM_VERSION_ATTRIBUTE, 25)
+        }
+    }
 }
 
 processResources {
@@ -235,7 +263,7 @@ build {
 }
 
 runServer {
-    minecraftVersion '1.21.11'
+    minecraftVersion '26.1.2'
 }
 
 test {

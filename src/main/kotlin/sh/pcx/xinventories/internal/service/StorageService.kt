@@ -107,6 +107,23 @@ class StorageService(
                 }
             }
 
+            // Async saving: the data is cached and marked dirty, normally flushed by the write-behind
+            // job. But if write-behind is NOT running (e.g. cache.writeBehindSeconds <= 0), nothing
+            // would ever persist it until shutdown - so kick off a background write ourselves to
+            // avoid silently losing the save on a crash/restart.
+            if (!isWriteBehindActive()) {
+                scope.launch {
+                    try {
+                        if (storage.savePlayerData(data)) {
+                            cache.markClean(data.uuid, data.group, data.gameMode)
+                            broadcastDataUpdate(data)
+                        }
+                    } catch (e: Exception) {
+                        Logging.error("Async persist failed for ${data.uuid} in group ${data.group}", e)
+                    }
+                }
+            }
+
             return true
         }
 
@@ -314,22 +331,38 @@ class StorageService(
 
         Logging.debug { "Flushing ${dirty.size} dirty cache entries" }
 
-        // Increment versions for all dirty entries
-        dirty.forEach { data ->
-            data.version++
+        // NOTE: each entry's version was already incremented by savePlayerData when it was marked
+        // dirty. Do NOT increment again here, or persisted versions drift ahead of reality and trip
+        // sync conflict detection.
+
+        val savedCount = storage.savePlayerDataBatch(dirty)
+
+        if (savedCount == dirty.size) {
+            // Full success: mark clean and broadcast updates.
+            dirty.forEach { data ->
+                cache.markClean(data.uuid, data.group, data.gameMode)
+                // Broadcast update to other servers if sync is enabled
+                broadcastDataUpdate(data)
+            }
+        } else {
+            // Partial/total failure. savePlayerDataBatch reports only a count, not which entries
+            // failed, so keep them ALL dirty for the next flush rather than marking them clean and
+            // silently dropping whatever did not persist. Re-saving the ones that succeeded is
+            // harmless (idempotent upsert).
+            Logging.warning(
+                "Write-behind flush persisted $savedCount/${dirty.size} entries; " +
+                    "keeping the remainder dirty for retry"
+            )
         }
 
-        val count = storage.savePlayerDataBatch(dirty)
-
-        // Mark as clean and broadcast updates
-        dirty.forEach { data ->
-            cache.markClean(data.uuid, data.group, data.gameMode)
-            // Broadcast update to other servers if sync is enabled
-            broadcastDataUpdate(data)
-        }
-
-        return count
+        return savedCount
     }
+
+    /**
+     * Whether the background write-behind job is currently running. When false, async saves must
+     * persist themselves rather than relying on a flush that will never happen.
+     */
+    private fun isWriteBehindActive(): Boolean = writeBehindJob?.isActive == true
 
     /**
      * Starts the write-behind background job.

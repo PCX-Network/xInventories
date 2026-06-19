@@ -144,10 +144,10 @@ class PlayerDataTest {
             val leggings = ItemStack(Material.DIAMOND_LEGGINGS)
             val boots = ItemStack(Material.DIAMOND_BOOTS)
 
-            player.inventory.helmet = helmet
-            player.inventory.chestplate = chestplate
-            player.inventory.leggings = leggings
-            player.inventory.boots = boots
+            player.inventory.setHelmet(helmet)
+            player.inventory.setChestplate(chestplate)
+            player.inventory.setLeggings(leggings)
+            player.inventory.setBoots(boots)
 
             val playerData = PlayerData.fromPlayer(player, "default")
 
@@ -1519,8 +1519,8 @@ class PlayerDataTest {
         @Test
         @DisplayName("should handle player with only some armor slots filled")
         fun partialArmorSlots() {
-            player.inventory.helmet = ItemStack(Material.DIAMOND_HELMET)
-            player.inventory.boots = ItemStack(Material.DIAMOND_BOOTS)
+            player.inventory.setHelmet(ItemStack(Material.DIAMOND_HELMET))
+            player.inventory.setBoots(ItemStack(Material.DIAMOND_BOOTS))
 
             val playerData = PlayerData.fromPlayer(player, "default")
 
@@ -1566,10 +1566,10 @@ class PlayerDataTest {
                 player.inventory.setItem(i, ItemStack(Material.DIRT, 64))
             }
             // Fill all armor slots
-            player.inventory.helmet = ItemStack(Material.IRON_HELMET)
-            player.inventory.chestplate = ItemStack(Material.IRON_CHESTPLATE)
-            player.inventory.leggings = ItemStack(Material.IRON_LEGGINGS)
-            player.inventory.boots = ItemStack(Material.IRON_BOOTS)
+            player.inventory.setHelmet(ItemStack(Material.IRON_HELMET))
+            player.inventory.setChestplate(ItemStack(Material.IRON_CHESTPLATE))
+            player.inventory.setLeggings(ItemStack(Material.IRON_LEGGINGS))
+            player.inventory.setBoots(ItemStack(Material.IRON_BOOTS))
             // Set offhand
             player.inventory.setItemInOffHand(ItemStack(Material.SHIELD))
             // Fill ender chest

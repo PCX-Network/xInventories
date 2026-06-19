@@ -1305,6 +1305,86 @@ class StorageServiceTest {
     }
 
     // ============================================
+    // Data-integrity regression tests (Part C bug fixes)
+    // ============================================
+
+    @Nested
+    @DisplayName("Data-integrity fixes")
+    inner class DataIntegrityTests {
+
+        @Test
+        fun `async save persists even when write-behind is disabled (B3)`() = testScope.runTest {
+            // asyncSaving on, but write-behind disabled: nothing would ever flush the dirty entry, so
+            // savePlayerData must kick off its own background write instead of just returning true.
+            val config = createMainConfig(writeBehindSeconds = 0, asyncSaving = true)
+            every { configManager.mainConfig } returns config
+            coEvery { mockStorage.savePlayerData(any()) } returns true
+
+            val service = createStorageServiceWithMockStorage(config, this) // write-behind NOT started
+            val data = createTestPlayerData(testUuid1, "world", GameMode.SURVIVAL)
+
+            val result = service.savePlayerData(data)
+            advanceUntilIdle() // let the background persist run
+
+            assertTrue(result)
+            coVerify(atLeast = 1) { mockStorage.savePlayerData(data) }
+        }
+
+        @Test
+        fun `write-behind flush does not double-increment version (B7)`() = testScope.runTest {
+            val config = createMainConfig(writeBehindSeconds = 5, asyncSaving = true)
+            every { configManager.mainConfig } returns config
+            coEvery { mockStorage.savePlayerDataBatch(any()) } returns 1
+
+            val service = createStorageServiceWithMockStorage(config, this)
+            val data = createTestPlayerData(testUuid1, "world", GameMode.SURVIVAL)
+            data.version = 7
+            service.cache.put(data, markDirty = true)
+
+            val count = service.flushDirtyEntries()
+
+            assertEquals(1, count)
+            assertEquals(7, data.version) // flush must NOT bump the version again
+        }
+
+        @Test
+        fun `failed flush keeps entries dirty for retry (B4)`() = testScope.runTest {
+            val config = createMainConfig(writeBehindSeconds = 5, asyncSaving = true)
+            every { configManager.mainConfig } returns config
+            // Two dirty entries but the batch reports only one persisted -> partial failure.
+            coEvery { mockStorage.savePlayerDataBatch(any()) } returns 1
+
+            val service = createStorageServiceWithMockStorage(config, this)
+            val d1 = createTestPlayerData(testUuid1, "world", GameMode.SURVIVAL)
+            val d2 = createTestPlayerData(testUuid2, "world", GameMode.SURVIVAL)
+            service.cache.put(d1, markDirty = true)
+            service.cache.put(d2, markDirty = true)
+
+            service.flushDirtyEntries()
+
+            // We can't tell which failed, so both stay dirty rather than silently dropping one.
+            assertEquals(2, service.cache.getDirtyEntries().size)
+        }
+
+        @Test
+        fun `successful flush marks entries clean (B4 happy path)`() = testScope.runTest {
+            val config = createMainConfig(writeBehindSeconds = 5, asyncSaving = true)
+            every { configManager.mainConfig } returns config
+            coEvery { mockStorage.savePlayerDataBatch(any()) } returns 2
+
+            val service = createStorageServiceWithMockStorage(config, this)
+            val d1 = createTestPlayerData(testUuid1, "world", GameMode.SURVIVAL)
+            val d2 = createTestPlayerData(testUuid2, "world", GameMode.SURVIVAL)
+            service.cache.put(d1, markDirty = true)
+            service.cache.put(d2, markDirty = true)
+
+            service.flushDirtyEntries()
+
+            assertTrue(service.cache.getDirtyEntries().isEmpty())
+        }
+    }
+
+    // ============================================
     // Helper Methods
     // ============================================
 

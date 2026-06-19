@@ -5,6 +5,24 @@ All notable changes to xInventories will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.2.0] - 2026-06-18
+
+### Added
+- **Minecraft 26.1.2 support** - Updated for Mojang's new year-based versioning (`26.1.2` = year 2026, drop 1, hotfix 2). The plugin compiles against paper-api 26.1.2 on JDK 25 but emits Java 21 bytecode, so a single jar runs on both Java 21 servers (1.20.5 - 1.21.x) and Java 25 servers (26.1.x).
+
+### Fixed
+- **GUI item leak** - Items could occasionally be moved out of an xInventories menu while the button handler never fired. GUI inventories now carry a dedicated `InventoryHolder`, so clicks are cancelled by the inventory's intrinsic identity rather than a side tracking map that could desync (for example after `/xinv reload` while a menu was open).
+- **Inventory loss on logout** - The quit save could read the player a tick after they were removed and persist an empty/partial inventory. The snapshot is now captured synchronously when the player quits, then persisted asynchronously.
+- **Async save never persisting** - When `async-saving` was enabled but write-behind was disabled, saves were only cached and never written until shutdown. Such saves now persist via a background write.
+- **Write-behind data loss on failure** - A failed batch flush no longer marks entries clean; unsaved entries stay dirty and are retried on the next flush.
+- **Stuck cross-server lock** - The distributed transfer lock is now always released on quit, even if the save throws.
+- **Inventory version drift** - The version is no longer double-incremented on the write-behind path.
+- **Deserialization resilience** - A single corrupt or unknown item no longer discards the entire inventory; bad entries are logged and skipped.
+
+### Changed
+- Armor handling updated for the Paper 26.1 API (armor getters are now non-null).
+- Building/testing from source now requires JDK 25; CI updated accordingly. The released jar remains Java 21 bytecode and runs on Java 21+ servers.
+
 ## [1.1.0] - 2026-01-30
 
 ### Added

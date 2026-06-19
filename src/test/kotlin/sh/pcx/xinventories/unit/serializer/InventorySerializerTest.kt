@@ -228,6 +228,17 @@ class InventorySerializerTest {
         }
 
         @Test
+        @DisplayName("should degrade gracefully on a malformed payload instead of throwing (B6)")
+        fun `deserialize malformed payload does not throw`() {
+            // A structurally-invalid (non-blank) payload must not propagate an exception - it should
+            // be caught and return an empty array, mirroring how a single bad item is now dropped
+            // rather than taking down the whole inventory.
+            val result = InventorySerializer.deserializeItemStacks("!!!not-valid-base64-bukkit-data!!!")
+
+            assertTrue(result.isEmpty())
+        }
+
+        @Test
         @DisplayName("should handle large array")
         fun `serialize and deserialize large array`() {
             // Given - typical inventory size

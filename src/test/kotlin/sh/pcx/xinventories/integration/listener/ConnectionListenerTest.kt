@@ -188,11 +188,11 @@ class ConnectionListenerTest {
             val player = server.addPlayer()
             val event = PlayerQuitEvent(player, Component.text("quit"), PlayerQuitEvent.QuitReason.DISCONNECTED)
 
-            coEvery { inventoryService.handlePlayerQuit(player) } just Runs
+            coEvery { inventoryService.handlePlayerQuit(player, any()) } just Runs
 
             listener.onPlayerQuit(event)
 
-            coVerify(exactly = 1) { inventoryService.handlePlayerQuit(player) }
+            coVerify(exactly = 1) { inventoryService.handlePlayerQuit(player, any()) }
         }
 
         @Test
@@ -202,7 +202,7 @@ class ConnectionListenerTest {
             val event = PlayerQuitEvent(player, Component.text("quit"), PlayerQuitEvent.QuitReason.DISCONNECTED)
 
             val capturedPlayer = slot<Player>()
-            coEvery { inventoryService.handlePlayerQuit(capture(capturedPlayer)) } just Runs
+            coEvery { inventoryService.handlePlayerQuit(capture(capturedPlayer), any()) } just Runs
 
             listener.onPlayerQuit(event)
 
@@ -216,7 +216,7 @@ class ConnectionListenerTest {
             val player = server.addPlayer()
             val event = PlayerQuitEvent(player, Component.text("quit"), PlayerQuitEvent.QuitReason.DISCONNECTED)
 
-            coEvery { inventoryService.handlePlayerQuit(any()) } throws RuntimeException("Test exception")
+            coEvery { inventoryService.handlePlayerQuit(any(), any()) } throws RuntimeException("Test exception")
 
             // Should not throw - exception is caught and logged
             assertDoesNotThrow {
@@ -233,15 +233,15 @@ class ConnectionListenerTest {
             val player2 = server.addPlayer("Player2")
             val player3 = server.addPlayer("Player3")
 
-            coEvery { inventoryService.handlePlayerQuit(any()) } just Runs
+            coEvery { inventoryService.handlePlayerQuit(any(), any()) } just Runs
 
             listener.onPlayerQuit(PlayerQuitEvent(player1, Component.text("quit"), PlayerQuitEvent.QuitReason.DISCONNECTED))
             listener.onPlayerQuit(PlayerQuitEvent(player2, Component.text("quit"), PlayerQuitEvent.QuitReason.KICKED))
             listener.onPlayerQuit(PlayerQuitEvent(player3, Component.text("quit"), PlayerQuitEvent.QuitReason.TIMED_OUT))
 
-            coVerify(exactly = 1) { inventoryService.handlePlayerQuit(player1) }
-            coVerify(exactly = 1) { inventoryService.handlePlayerQuit(player2) }
-            coVerify(exactly = 1) { inventoryService.handlePlayerQuit(player3) }
+            coVerify(exactly = 1) { inventoryService.handlePlayerQuit(player1, any()) }
+            coVerify(exactly = 1) { inventoryService.handlePlayerQuit(player2, any()) }
+            coVerify(exactly = 1) { inventoryService.handlePlayerQuit(player3, any()) }
         }
 
         @Test
@@ -250,7 +250,7 @@ class ConnectionListenerTest {
             val player = server.addPlayer("TestPlayer")
             val event = PlayerQuitEvent(player, Component.text("quit"), PlayerQuitEvent.QuitReason.DISCONNECTED)
 
-            coEvery { inventoryService.handlePlayerQuit(any()) } just Runs
+            coEvery { inventoryService.handlePlayerQuit(any(), any()) } just Runs
 
             listener.onPlayerQuit(event)
 
@@ -260,7 +260,7 @@ class ConnectionListenerTest {
         @Test
         @DisplayName("should handle all quit reasons")
         fun shouldHandleAllQuitReasons() {
-            coEvery { inventoryService.handlePlayerQuit(any()) } just Runs
+            coEvery { inventoryService.handlePlayerQuit(any(), any()) } just Runs
 
             PlayerQuitEvent.QuitReason.entries.forEach { reason ->
                 val player = server.addPlayer()
@@ -268,7 +268,7 @@ class ConnectionListenerTest {
 
                 listener.onPlayerQuit(event)
 
-                coVerify { inventoryService.handlePlayerQuit(player) }
+                coVerify { inventoryService.handlePlayerQuit(player, any()) }
             }
         }
     }
@@ -322,7 +322,7 @@ class ConnectionListenerTest {
             val player = server.addPlayer()
 
             coEvery { inventoryService.handlePlayerJoin(any()) } just Runs
-            coEvery { inventoryService.handlePlayerQuit(any()) } just Runs
+            coEvery { inventoryService.handlePlayerQuit(any(), any()) } just Runs
 
             // Simulate rapid join/quit
             repeat(5) {
@@ -331,7 +331,7 @@ class ConnectionListenerTest {
             }
 
             coVerify(exactly = 5) { inventoryService.handlePlayerJoin(player) }
-            coVerify(exactly = 5) { inventoryService.handlePlayerQuit(player) }
+            coVerify(exactly = 5) { inventoryService.handlePlayerQuit(player, any()) }
         }
 
         @Test

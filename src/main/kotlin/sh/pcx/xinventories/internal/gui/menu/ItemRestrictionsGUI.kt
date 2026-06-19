@@ -509,6 +509,9 @@ class InputManager private constructor(private val plugin: PluginContext) {
 
     init {
         plugin.plugin.server.pluginManager.registerEvents(object : org.bukkit.event.Listener {
+            // Deprecated but kept intentionally for Spigot compatibility (no AsyncChatEvent there);
+            // still present in paper-api 26.1.2. See GUIManager.onPlayerChat for the rationale.
+            @Suppress("DEPRECATION")
             @org.bukkit.event.EventHandler(priority = org.bukkit.event.EventPriority.LOWEST)
             fun onChat(event: org.bukkit.event.player.AsyncPlayerChatEvent) {
                 val callback = pendingInputs.remove(event.player.uniqueId) ?: return

@@ -42,6 +42,7 @@ import sh.pcx.xinventories.internal.service.GroupService
 import sh.pcx.xinventories.internal.service.InventoryService
 import sh.pcx.xinventories.internal.service.MessageService
 import sh.pcx.xinventories.internal.service.StorageService
+import sh.pcx.xinventories.internal.service.SyncService
 import sh.pcx.xinventories.internal.util.Logging
 import java.util.*
 
@@ -338,6 +339,28 @@ class InventoryServiceTest {
 
             Assertions.assertNull(inventoryService.getCurrentGroup(player))
             Assertions.assertNull(inventoryService.getActiveSnapshot(player))
+        }
+
+        @Test
+        @DisplayName("releases the distributed lock even when the save fails (B5)")
+        fun releasesLockOnSaveFailure() = testScope.runTest {
+            val player = server.addPlayer()
+            val group = Group(name = "survival", isDefault = true)
+            every { groupService.getGroupForWorld(player.world) } returns group
+            every { groupService.getGroup("survival") } returns group
+
+            // Enable sync so the lock path is exercised, and make the save fail.
+            val syncService = mockk<SyncService>(relaxed = true)
+            every { plugin.serviceManager.syncService } returns syncService
+            every { syncService.isEnabled } returns true
+            coEvery { storageService.savePlayerData(any()) } throws RuntimeException("db down")
+
+            // The save failure may propagate, but the lock MUST still be released in the finally block
+            // - otherwise the player's data stays locked across the network forever.
+            runCatching { inventoryService.handlePlayerQuit(player) }
+            advanceUntilIdle()
+
+            coVerify { syncService.releaseLock(player.uniqueId) }
         }
     }
 

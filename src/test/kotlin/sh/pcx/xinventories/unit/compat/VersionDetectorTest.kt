@@ -71,6 +71,26 @@ class VersionDetectorTest {
         }
 
         @Test
+        @DisplayName("should parse year-based version 26.1.2 (year=major, drop=minor, hotfix=patch)")
+        fun parseYearBased26() {
+            val parsed = VersionDetector.parseVersion("26.1.2")
+
+            assertEquals(26, parsed.major)
+            assertEquals(1, parsed.minor)
+            assertEquals(2, parsed.patch)
+        }
+
+        @Test
+        @DisplayName("should parse year-based version without hotfix (26.1 -> patch 0)")
+        fun parseYearBased26NoHotfix() {
+            val parsed = VersionDetector.parseVersion("26.1")
+
+            assertEquals(26, parsed.major)
+            assertEquals(1, parsed.minor)
+            assertEquals(0, parsed.patch)
+        }
+
+        @Test
         @DisplayName("should handle empty string gracefully")
         fun parseEmptyString() {
             val parsed = VersionDetector.parseVersion("")
@@ -186,6 +206,18 @@ class VersionDetectorTest {
             assertFalse(isAtLeastForVersion(version, 1, 20, 6))
         }
 
+        @Test
+        @DisplayName("year-based 26.1.2 is at least every legacy 1.x target")
+        fun yearBased26IsAtLeastLegacy() {
+            val version = VersionDetector.parseVersion("26.1.2")
+
+            assertTrue(isAtLeastForVersion(version, 1, 20, 5))
+            assertTrue(isAtLeastForVersion(version, 1, 21, 0))
+            assertTrue(isAtLeastForVersion(version, 1, 21, 11))
+            // and against a future legacy-style target that will never ship
+            assertTrue(isAtLeastForVersion(version, 1, 99, 99))
+        }
+
         /**
          * Helper function to test isAtLeast logic without requiring Bukkit.
          */
@@ -259,6 +291,14 @@ class VersionDetectorTest {
         @DisplayName("1.22.0 should have Kotlin bundled (future version)")
         fun version1220ShouldHaveKotlinBundled() {
             val version = VersionDetector.parseVersion("1.22.0")
+
+            assertTrue(isKotlinBundledForVersion(version))
+        }
+
+        @Test
+        @DisplayName("year-based 26.1.2 should have Kotlin bundled")
+        fun version2612HasKotlinBundled() {
+            val version = VersionDetector.parseVersion("26.1.2")
 
             assertTrue(isKotlinBundledForVersion(version))
         }
