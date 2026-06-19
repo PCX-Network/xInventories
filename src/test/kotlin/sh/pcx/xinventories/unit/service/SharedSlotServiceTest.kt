@@ -129,11 +129,12 @@ class SharedSlotServiceTest {
             every { inventory.getItem(i) } returns mainItems[i]
         }
 
-        // Set up armor contents (slots 36-39)
-        every { inventory.boots } returns armorItems.getOrNull(0)
-        every { inventory.leggings } returns armorItems.getOrNull(1)
-        every { inventory.chestplate } returns armorItems.getOrNull(2)
-        every { inventory.helmet } returns armorItems.getOrNull(3)
+        // Set up armor contents (slots 36-39). As of Paper 26.1 the armor getters are non-null and
+        // return AIR for empty slots (like offhand has always done), so coerce nulls to an AIR item.
+        every { inventory.boots } returns (armorItems.getOrNull(0) ?: createNullItem())
+        every { inventory.leggings } returns (armorItems.getOrNull(1) ?: createNullItem())
+        every { inventory.chestplate } returns (armorItems.getOrNull(2) ?: createNullItem())
+        every { inventory.helmet } returns (armorItems.getOrNull(3) ?: createNullItem())
 
         // Set up offhand (slot 40)
         every { inventory.itemInOffHand } returns (offhandItem ?: createNullItem())
@@ -547,7 +548,7 @@ class SharedSlotServiceTest {
             service.preserveSharedSlots(player)
             service.restoreSharedSlots(player)
 
-            verify { inventory.boots = any() }
+            verify { inventory.setBoots(any()) }
         }
 
         @Test
@@ -797,7 +798,7 @@ class SharedSlotServiceTest {
 
             service.applyEnforcedItems(player)
 
-            verify { inventory.helmet = any() }
+            verify { inventory.setHelmet(any()) }
         }
 
         @Test

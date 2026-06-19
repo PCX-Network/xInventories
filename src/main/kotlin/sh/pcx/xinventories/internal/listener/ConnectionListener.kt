@@ -44,10 +44,21 @@ class ConnectionListener(private val plugin: PluginContext) : Listener {
 
         Logging.debug { "Player ${player.name} quitting, saving inventory..." }
 
+        // Capture the inventory snapshot synchronously, here on the main thread, while the player is
+        // still fully valid. Persisting happens asynchronously below. If we instead read the player
+        // inside the coroutine, it could run on a later tick (after the player is removed) and save
+        // an empty/partial inventory - a data-loss-on-logout bug.
+        val captured = try {
+            inventoryService.capturePlayerData(player)
+        } catch (e: Exception) {
+            Logging.error("Failed to capture inventory snapshot for ${player.name} on quit", e)
+            null
+        }
+
         // Use a coroutine to handle async saving
         plugin.launch {
             try {
-                inventoryService.handlePlayerQuit(player)
+                inventoryService.handlePlayerQuit(player, captured)
             } catch (e: Exception) {
                 Logging.error("Failed to save inventory for ${player.name} on quit", e)
             }

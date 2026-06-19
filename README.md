@@ -13,7 +13,7 @@
 </p>
 
 <p align="center">
-  <img src="https://img.shields.io/badge/Paper%20%7C%20Spigot-1.20.5--1.21.11+-blue?logo=data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAA4AAAAOCAYAAAAfSC3RAAAACXBIWXMAAA7EAAAOxAGVKw4bAAAAyklEQVQokZVSQQ7DIAzz0v7/y+wyCEkDdNImTQKJ7TgBPgBuOgEHd19FZO8uT3f3BQDS93VEpGaW2s0bSJJU1cy2A9VVtR4FkjQz28ysxgCApO37IEmttWZmNcaAqjaA1FpLjJE5Z+acyzBCRHoIYbTWPMlxHJZzthgjQwiIMUJV0Xvv7u69d4oIAEBEEGMEEUHvHb13xBjh7mBmAAB3BzNDRNBaw5wTRNQCHMfhAJBSwtgRzjlJKUFVQUSIMWL8JL8HqsN/8n3+AWPvTE9qfPlzAAAAAElFTkSuQmCC" alt="Paper | Spigot">
+  <img src="https://img.shields.io/badge/Paper%20%7C%20Spigot-1.20.5--26.1.2+-blue?logo=data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAA4AAAAOCAYAAAAfSC3RAAAACXBIWXMAAA7EAAAOxAGVKw4bAAAAyklEQVQokZVSQQ7DIAzz0v7/y+wyCEkDdNImTQKJ7TgBPgBuOgEHd19FZO8uT3f3BQDS93VEpGaW2s0bSJJU1cy2A9VVtR4FkjQz28ysxgCApO37IEmttWZmNcaAqjaA1FpLjJE5Z+acyzBCRHoIYbTWPMlxHJZzthgjQwiIMUJV0Xvv7u69d4oIAEBEEGMEEUHvHb13xBjh7mBmAAB3BzNDRNBaw5wTRNQCHMfhAJBSwtgRzjlJKUFVQUSIMWL8JL8HqsN/8n3+AWPvTE9qfPlzAAAAAElFTkSuQmCC" alt="Paper | Spigot">
   <img src="https://img.shields.io/badge/Java-21+-orange?logo=openjdk&logoColor=white" alt="Java 21+">
   <a href="https://github.com/PCX-SH/xInventories/blob/main/LICENSE"><img src="https://img.shields.io/github/license/PCX-SH/xInventories?color=green" alt="License"></a>
   <a href="https://github.com/PCX-SH/xInventories/stargazers"><img src="https://img.shields.io/github/stars/PCX-SH/xInventories?style=flat&color=yellow" alt="Stars"></a>
@@ -30,7 +30,7 @@
 
 ---
 
-A powerful per-world inventory management plugin for Paper 1.20.5+ servers. Separate player inventories, experience, health, and more across different worlds or world groups.
+A powerful per-world inventory management plugin for Paper and Spigot servers (1.20.5 through 26.1.2). Separate player inventories, experience, health, and more across different worlds or world groups.
 
 ## Features
 
@@ -94,10 +94,12 @@ A powerful per-world inventory management plugin for Paper 1.20.5+ servers. Sepa
 
 ## Requirements
 
-- **Paper 1.20.5+** or **Spigot 1.20.5+** (1.20.5 - 1.21.11+ supported)
-- **Java 21+**
+- **Paper 1.20.5+** or **Spigot 1.20.5+** (1.20.5 - 26.1.2+ supported)
+- **Java 21+** — the plugin jar targets Java 21 and runs on Java 21 servers (1.20.5 - 1.21.x). Minecraft 26.1+ servers require Java 25 per Mojang; the same jar runs there too.
 
 > **Note:** While both Paper and Spigot are supported, Paper is recommended for optimal performance and access to all features.
+>
+> Mojang switched to year-based versioning at 26.1 (e.g. `26.1.2` = year 2026, drop 1, hotfix 2).
 
 ## Downloads
 
@@ -487,9 +489,11 @@ xInventories includes a comprehensive test suite to ensure reliability and preve
 |----------|-------|-------------|
 | **Unit Tests** | 2800+ | Serializers, models, cache, configuration, GUI logic, services, commands, hooks |
 | **Integration Tests** | 950+ | Storage backends, services, API, economy, templates |
-| **Total** | **3801 passing** | 23 skipped (MockBukkit limitations) |
+| **Total** | **3880 passing** | 40 skipped (MockBukkit limitations) |
 
 ### Running Tests
+
+> **Note:** Building/testing from source requires **JDK 25** (paper-api 26.1.2 is compiled against Java 25). The produced jar is Java 21 bytecode and still runs on Java 21 servers.
 
 ```bash
 # Run all tests

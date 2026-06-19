@@ -70,31 +70,32 @@ class GUIManager(private val plugin: PluginContext) : Listener {
     fun onInventoryClick(event: InventoryClickEvent) {
         val player = event.whoClicked as? Player ?: return
 
-        // Check if this player has a GUI open
-        val gui = openGUIs[player.uniqueId] ?: return
-        val trackedInventory = openInventories[player.uniqueId] ?: return
+        // Identify our GUI from the TOP inventory's holder. This identity is intrinsic to the
+        // inventory, so it stays correct even when the tracking maps are out of sync (after a
+        // reload, during navigation, or on rapid re-open) - which is what previously let items
+        // leak out with no handler firing.
+        val holder = event.view.topInventory.holder as? XInvGuiHolder ?: return
+        val gui = holder.gui
 
-        // Verify this is actually our GUI inventory
-        if (event.view.topInventory != trackedInventory) {
-            return
-        }
-
-        // Cancel ALL clicks unconditionally - this prevents any item movement
+        // Cancel ALL clicks unconditionally and FIRST, before any further branching. Any click while
+        // one of our GUIs is the top inventory - including shift-click, number-key swaps,
+        // collect-to-cursor, and clicks originating in the player's own inventory - must never move
+        // items. Cancelling up front is what guarantees nothing slips through.
         event.isCancelled = true
         event.result = org.bukkit.event.Event.Result.DENY
 
-        // Block specific actions that could move items
+        // Pure item-move actions are never treated as a button activation.
         if (event.action == InventoryAction.MOVE_TO_OTHER_INVENTORY ||
             event.action == InventoryAction.COLLECT_TO_CURSOR ||
             event.action == InventoryAction.HOTBAR_SWAP ||
             event.action == InventoryAction.HOTBAR_MOVE_AND_READD) {
-            return // Already cancelled, don't process click
+            return // Already cancelled above; don't dispatch to slot handlers.
         }
 
-        // Only process clicks in the top inventory (our GUI)
+        // Only dispatch slot logic for clicks inside our GUI (the top inventory). Clicks in the
+        // player's own inventory are already cancelled above; there's nothing else to do.
         val clickedInventory = event.clickedInventory ?: return
         if (clickedInventory != event.view.topInventory) {
-            // Click was in player's inventory - already cancelled, just return
             return
         }
 
@@ -108,19 +109,10 @@ class GUIManager(private val plugin: PluginContext) : Listener {
 
     @EventHandler(priority = EventPriority.LOWEST, ignoreCancelled = false)
     fun onInventoryDrag(event: InventoryDragEvent) {
-        val player = event.whoClicked as? Player ?: return
+        // Cancel any drag while one of our GUIs is the top inventory. This covers drags that span
+        // both the GUI and the player's inventory, and drags entirely within either one.
+        if (event.view.topInventory.holder !is XInvGuiHolder) return
 
-        // Check if player has a GUI open
-        if (!openGUIs.containsKey(player.uniqueId)) return
-
-        val trackedInventory = openInventories[player.uniqueId] ?: return
-
-        // Verify this is our GUI
-        if (event.view.topInventory != trackedInventory) {
-            return
-        }
-
-        // Cancel all drag events in our GUIs
         event.isCancelled = true
         event.result = org.bukkit.event.Event.Result.DENY
     }
@@ -129,21 +121,25 @@ class GUIManager(private val plugin: PluginContext) : Listener {
     fun onInventoryClose(event: InventoryCloseEvent) {
         val player = event.player as? Player ?: return
 
-        // Check if the closed inventory is our tracked inventory
-        val trackedInventory = openInventories[player.uniqueId]
-        if (trackedInventory != null && event.inventory == trackedInventory) {
-            val gui = openGUIs.remove(player.uniqueId)
+        // Resolve the GUI from the closing inventory's own holder (robust to tracking desync).
+        val holder = event.inventory.holder as? XInvGuiHolder ?: return
+
+        // Only clear tracking if it still points at the inventory being closed. During navigation
+        // (opening GUI B over GUI A), A's close fires *after* tracking already points at B - we must
+        // not clear B's entry here.
+        if (openInventories[player.uniqueId] == event.inventory) {
+            openGUIs.remove(player.uniqueId)
             openInventories.remove(player.uniqueId)
-
-            // Notify the GUI
-            try {
-                gui?.onClose(event)
-            } catch (e: Exception) {
-                Logging.error("Error handling GUI close for ${player.name}", e)
-            }
-
-            Logging.debug("GUI closed for ${player.name}, tracking ${openGUIs.size} GUIs")
         }
+
+        // Always notify the GUI that actually closed.
+        try {
+            holder.gui.onClose(event)
+        } catch (e: Exception) {
+            Logging.error("Error handling GUI close for ${player.name}", e)
+        }
+
+        Logging.debug { "GUI closed for ${player.name}, tracking ${openGUIs.size} GUIs" }
     }
 
     /**
@@ -167,6 +163,11 @@ class GUIManager(private val plugin: PluginContext) : Listener {
      */
     fun hasChatInput(player: Player): Boolean = chatInputHandlers.containsKey(player.uniqueId)
 
+    // NOTE: We intentionally use the deprecated AsyncPlayerChatEvent rather than Paper's
+    // AsyncChatEvent. xInventories supports Spigot as well, where AsyncChatEvent does not exist;
+    // AsyncPlayerChatEvent is the only chat event available on both platforms and is still present
+    // (deprecated) in paper-api 26.1.2.
+    @Suppress("DEPRECATION")
     @EventHandler(priority = EventPriority.LOWEST)
     fun onPlayerChat(event: AsyncPlayerChatEvent) {
         val handler = chatInputHandlers.remove(event.player.uniqueId) ?: return

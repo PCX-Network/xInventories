@@ -190,10 +190,10 @@ class SharedSlotService(
     private fun setItemToSlot(player: Player, slot: Int, item: ItemStack?) {
         when {
             slot in 0..35 -> player.inventory.setItem(slot, item)
-            slot == 36 -> player.inventory.boots = item
-            slot == 37 -> player.inventory.leggings = item
-            slot == 38 -> player.inventory.chestplate = item
-            slot == 39 -> player.inventory.helmet = item
+            slot == 36 -> player.inventory.setBoots(item)
+            slot == 37 -> player.inventory.setLeggings(item)
+            slot == 38 -> player.inventory.setChestplate(item)
+            slot == 39 -> player.inventory.setHelmet(item)
             slot == 40 -> player.inventory.setItemInOffHand(item)
         }
     }

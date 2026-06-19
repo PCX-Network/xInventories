@@ -23,7 +23,12 @@ abstract class AbstractGUI(
     protected var inventory: Inventory? = null
 
     override fun createInventory(player: Player): Inventory {
-        val inv = Bukkit.createInventory(null, size, title)
+        // Use a custom holder so the inventory carries its own GUI identity. Event handlers can then
+        // recognize our GUIs via the holder instead of a side tracking map, which prevents clicks
+        // from slipping through uncancelled when that map is out of sync (reload/navigation).
+        val holder = XInvGuiHolder(this)
+        val inv = Bukkit.createInventory(holder, size, title)
+        holder.attach(inv)
 
         // Populate with items from the items map
         items.forEach { (slot, guiItem) ->

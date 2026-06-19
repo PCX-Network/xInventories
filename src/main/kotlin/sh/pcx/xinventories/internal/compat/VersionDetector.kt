@@ -8,6 +8,13 @@ import org.bukkit.Bukkit
  * This is used to handle API differences between Paper versions, particularly
  * around Kotlin bundling (Paper 1.21+ bundles Kotlin, 1.20.5-1.20.6 does not).
  *
+ * Versioning schemes:
+ * - Legacy (1.20.5 - 1.21.x): major is always `1`, e.g. "1.21.11" -> major=1, minor=21, patch=11.
+ * - Year-based (26.1+): Mojang switched to year.drop.hotfix, e.g. "26.1.2" -> major=26, minor=1,
+ *   patch=2. Any year-based version has major >= 26, which is naturally greater than the legacy
+ *   major of 1, so [isAtLeast]/[isBelow]/[isKotlinBundled] comparisons against legacy "1.x.y"
+ *   targets remain correct without special-casing (a 26.x server is "at least 1.21" etc.).
+ *
  * The version is parsed lazily on first access to avoid issues during plugin
  * loading when Bukkit may not be fully initialized.
  */
@@ -33,9 +40,10 @@ object VersionDetector {
     /**
      * Gets the major version component.
      *
-     * For Minecraft versions, this is always `1`.
+     * Legacy Minecraft versions ("1.x.y") always have major `1`. Year-based versions ("26.1.2")
+     * have the year as the major (e.g. 26).
      *
-     * @return The major version (always 1 for Minecraft)
+     * @return The major version (1 for legacy "1.x.y", or the year for "26.1+")
      */
     fun getMajorVersion(): Int = parsedVersion.major
 
@@ -45,8 +53,9 @@ object VersionDetector {
      * Examples:
      * - "1.20.6" returns 20
      * - "1.21.1" returns 21
+     * - "26.1.2" returns 1 (the "drop" number under year-based versioning)
      *
-     * @return The minor version (e.g., 20, 21)
+     * @return The minor version (e.g., 20, 21, or the drop number for year-based versions)
      */
     fun getMinorVersion(): Int = parsedVersion.minor
 
@@ -57,10 +66,18 @@ object VersionDetector {
      * - "1.20.6" returns 6
      * - "1.21.1" returns 1
      * - "1.21" returns 0
+     * - "26.1.2" returns 2 (the hotfix number under year-based versioning)
      *
-     * @return The patch version (e.g., 0, 1, 5, 6)
+     * @return The patch version (e.g., 0, 1, 5, 6, or the hotfix number for year-based versions)
      */
     fun getPatchVersion(): Int = parsedVersion.patch
+
+    /**
+     * Whether the server uses Mojang's year-based versioning scheme (introduced at 26.1).
+     *
+     * @return true if the major version is a year (>= 26) rather than the legacy `1`
+     */
+    fun isYearBasedVersioning(): Boolean = parsedVersion.major >= 26
 
     /**
      * Checks if the server version is at least the specified version.
@@ -147,9 +164,9 @@ object VersionDetector {
     /**
      * Data class holding parsed version components.
      *
-     * @property major The major version (always 1 for Minecraft)
-     * @property minor The minor version (e.g., 20, 21)
-     * @property patch The patch version (e.g., 0, 1, 5, 6)
+     * @property major The major version (1 for legacy "1.x.y", or the year for year-based "26.1+")
+     * @property minor The minor version (e.g., 20, 21, or the drop number for year-based versions)
+     * @property patch The patch version (e.g., 0, 1, 5, 6, or the hotfix number for year-based versions)
      */
     internal data class ParsedVersion(
         val major: Int,

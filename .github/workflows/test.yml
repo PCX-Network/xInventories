@@ -14,11 +14,11 @@ jobs:
   test:
     runs-on: ubuntu-latest
 
-    # Matrix strategy for testing multiple Java versions
-    # Currently only Java 21 since it's required by Paper 1.20.5+
+    # Build/test require JDK 25 (paper-api 26.1.2 is compiled against Java 25). The produced jar is
+    # Java 21 bytecode, so it still runs on Java 21 servers (1.20.5 - 1.21.x).
     strategy:
       matrix:
-        java-version: [ '21' ]
+        java-version: [ '25' ]
 
     steps:
       - name: Checkout repository

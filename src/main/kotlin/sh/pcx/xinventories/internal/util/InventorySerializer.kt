@@ -44,7 +44,24 @@ object InventorySerializer {
             ByteArrayInputStream(bytes).use { inputStream ->
                 BukkitObjectInputStream(inputStream).use { dataInput ->
                     val size = dataInput.readInt()
-                    Array(size) { dataInput.readObject() as? ItemStack }
+                    var failures = 0
+                    val result = Array<ItemStack?>(size) { index ->
+                        try {
+                            dataInput.readObject() as? ItemStack
+                        } catch (e: Exception) {
+                            // A single bad item (e.g. an unknown type from a newer version) must not
+                            // wipe the entire inventory. Note: a failed readObject can desync the
+                            // Bukkit object stream, so trailing items may also be lost - but we keep
+                            // everything read so far instead of returning nothing.
+                            failures++
+                            Logging.error("Failed to deserialize item at index $index (slot dropped)", e)
+                            null
+                        }
+                    }
+                    if (failures > 0) {
+                        Logging.warning("Dropped $failures of $size item(s) during inventory deserialization")
+                    }
+                    result
                 }
             }
         } catch (e: Exception) {
@@ -126,12 +143,22 @@ object InventorySerializer {
                 BukkitObjectInputStream(inputStream).use { dataInput ->
                     val size = dataInput.readInt()
                     val items = mutableMapOf<Int, ItemStack>()
-                    repeat(size) {
-                        val slot = dataInput.readInt()
-                        val item = dataInput.readObject() as? ItemStack
-                        if (item != null) {
-                            items[slot] = item
+                    var failures = 0
+                    repeat(size) { index ->
+                        // Per-entry recovery: one undeserializable entry must not drop the whole map.
+                        try {
+                            val slot = dataInput.readInt()
+                            val item = dataInput.readObject() as? ItemStack
+                            if (item != null) {
+                                items[slot] = item
+                            }
+                        } catch (e: Exception) {
+                            failures++
+                            Logging.error("Failed to deserialize inventory-map entry #$index (dropped)", e)
                         }
+                    }
+                    if (failures > 0) {
+                        Logging.warning("Dropped $failures of $size inventory-map entr(ies) during deserialization")
                     }
                     items
                 }

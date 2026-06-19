@@ -2,7 +2,7 @@ plugins {
     id 'org.jetbrains.kotlin.jvm' version '2.3.0'
     id 'org.jetbrains.kotlin.plugin.serialization' version '2.3.0'
     id 'org.jetbrains.dokka' version '1.9.20'
-    id 'com.gradleup.shadow' version '9.3.1'
+    id 'com.gradleup.shadow' version '9.4.2'
     id 'xyz.jpenilla.run-paper' version '3.0.2'
     // Code coverage with JaCoCo
     id 'jacoco'
@@ -11,16 +11,16 @@ plugins {
 }
 
 group = 'sh.pcx'
-version = '1.1.0'
+version = '1.2.0'
 
 // Library versions - used in both dependencies and plugin.yml
 ext {
     kotlinVersion = '2.3.0'
-    coroutinesVersion = '1.10.2'
-    serializationVersion = '1.10.0'
-    caffeineVersion = '3.2.3'
-    hikariVersion = '7.0.2'
-    jedisVersion = '7.2.1'
+    coroutinesVersion = '1.11.0'
+    serializationVersion = '1.11.0'
+    caffeineVersion = '3.2.4'
+    hikariVersion = '7.1.0'
+    jedisVersion = '7.5.2'
     slf4jVersion = '2.0.16'
     commonsPool2Version = '2.12.0'
     gsonVersion = '2.12.1'
@@ -31,19 +31,19 @@ ext {
         [group: 'org.jetbrains.kotlin', artifact: 'kotlin-stdlib', version: kotlinVersion,
          sha256: 'iHWHyRcTJQrVL+FK2RZtBCwzg1BJiQ6UN/NV/8WhlbE='],
         [group: 'org.jetbrains.kotlinx', artifact: 'kotlinx-coroutines-core-jvm', version: coroutinesVersion,
-         sha256: 'XKF1s43zMf1kFVs1zYyuElH6nuNpcJs21C4KKIzM4/0='],
+         sha256: '0ddaoB3/u00cUg5n5MTn9fYXRxjny0YyQSUD8vDmBPo='],
         [group: 'org.jetbrains.kotlinx', artifact: 'kotlinx-serialization-core-jvm', version: serializationVersion,
-         sha256: 'FNbyfOKPYevEpRbVYvkRt7wBz75Tl/uITEXqDbBExjU='],
+         sha256: '9KgBxkfUNRMnzZ4axBE+K+nqN6ZKsKuuJpwlpS4o810='],
         [group: 'org.jetbrains.kotlinx', artifact: 'kotlinx-serialization-json-jvm', version: serializationVersion,
-         sha256: 'rx4+Ho7jF2Ro4exynfhTsgZgcd6UqExBKtn6E1yzfzo='],
+         sha256: 'VjoltOtckSiunCR589GlxE3NF2ESuRzwNoLpBuulyTU='],
         [group: 'com.github.ben-manes.caffeine', artifact: 'caffeine', version: caffeineVersion,
-         sha256: 'ynDJCl0c4VEYgM6ck9StIhCPYREdPa+R61J2K1cb0Xk='],
+         sha256: 'nZ0s/Wgf2Sct7T0nyZMNsS+J9zI0WXWqET68Iju/EiQ='],
         [group: 'com.zaxxer', artifact: 'HikariCP', version: hikariVersion,
-         sha256: '8eYS+ic0W+MQeoVDHoqK6yBcFTZKsvLUEeQKnXuwgJU='],
+         sha256: 'K+RcZBuEHoHfhykuGB8sIDUAxfDpoWdvE1knOH889As='],
         [group: 'org.slf4j', artifact: 'slf4j-api', version: slf4jVersion,
          sha256: 'oSV43eG6AL2bgW04iguHmSjQC6s8g8JA9wE79BlsV5o='],
         [group: 'redis.clients', artifact: 'jedis', version: jedisVersion,
-         sha256: '2gXptRjTbyZfUms55SF1bnYz+cRHKRaaMjXNvxxyF5A='],
+         sha256: '/FoLQ33g4g9JTHfDaBFECZ8hsRq+jX6HNhx26DTwbyQ='],
         [group: 'org.apache.commons', artifact: 'commons-pool2', version: commonsPool2Version,
          sha256: 'bTvRjfhBDz4xsDGspYLMEJNCNYpionWevQxM3zDQb4s='],
         [group: 'com.google.code.gson', artifact: 'gson', version: gsonVersion,
@@ -61,8 +61,10 @@ repositories {
 }
 
 dependencies {
-    // Paper API - targeting 1.21.11 (supports 1.20.5+)
-    compileOnly 'io.papermc.paper:paper-api:1.21.11-R0.1-SNAPSHOT'
+    // Paper API - targeting 26.1.2 (supports 1.20.5+ at runtime via VersionDetector/compat shims)
+    // Note: Paper switched to year-based versioning at 26.1; the coordinate format changed from
+    // "{VERSION}-R0.1-SNAPSHOT" to "{VERSION}.build.{N}-stable" (no more -SNAPSHOT).
+    compileOnly 'io.papermc.paper:paper-api:26.1.2.build.71-stable'
 
     // Kotlin - provided by Paper 1.21+, loaded via plugin.yml libraries for 1.20.5-1.20.6
     compileOnly 'org.jetbrains.kotlin:kotlin-stdlib'
@@ -86,11 +88,11 @@ dependencies {
     compileOnly('com.github.MilkBowl:VaultAPI:1.7.1') {
         exclude group: 'org.bukkit', module: 'bukkit'
     }
-    compileOnly 'me.clip:placeholderapi:2.11.7'
+    compileOnly 'me.clip:placeholderapi:2.12.2'
     compileOnly 'net.luckperms:api:5.5'
 
     // bStats metrics
-    implementation 'org.bstats:bstats-bukkit:3.1.0'
+    implementation 'org.bstats:bstats-bukkit:3.2.1'
 
     // PerWorldInventory-kt (archived but API functional)
     // Note: PWI has many transitive deps - exclude all and access via reflection at runtime
@@ -107,8 +109,8 @@ dependencies {
 
     // Testing - use kotlin-test-junit5 to bridge kotlin.test to JUnit 5
     testImplementation "org.jetbrains.kotlin:kotlin-test-junit5:${kotlinVersion}"
-    testImplementation 'org.junit.jupiter:junit-jupiter:6.0.2'
-    testImplementation 'io.mockk:mockk:1.14.9'
+    testImplementation 'org.junit.jupiter:junit-jupiter:6.1.0'
+    testImplementation 'io.mockk:mockk:1.14.11'
     testImplementation "org.jetbrains.kotlinx:kotlinx-coroutines-test:${coroutinesVersion}"
 
     // Runtime dependencies needed for tests (downloaded by Paper's library loader at runtime)
@@ -117,12 +119,12 @@ dependencies {
     testImplementation "com.github.ben-manes.caffeine:caffeine:${caffeineVersion}"
     testImplementation "com.zaxxer:HikariCP:${hikariVersion}"
     testImplementation "redis.clients:jedis:${jedisVersion}"
-    testImplementation 'io.papermc.paper:paper-api:1.21.11-R0.1-SNAPSHOT'
-    testImplementation('org.mockbukkit.mockbukkit:mockbukkit-v1.21:4.101.0') {
+    testImplementation 'io.papermc.paper:paper-api:26.1.2.build.71-stable'
+    testImplementation('org.mockbukkit.mockbukkit:mockbukkit-v26.1.2:4.113.2') {
         exclude group: 'org.jetbrains.kotlin'
         exclude group: 'org.jetbrains.kotlinx'
     }
-    testImplementation 'org.xerial:sqlite-jdbc:3.51.1.0'
+    testImplementation 'org.xerial:sqlite-jdbc:3.53.2.0'
     // Vault API for economy tests
     testImplementation('com.github.MilkBowl:VaultAPI:1.7.1') {
         exclude group: 'org.bukkit', module: 'bukkit'
@@ -130,14 +132,40 @@ dependencies {
     // LuckPerms API for hook tests
     testImplementation 'net.luckperms:api:5.5'
     // PlaceholderAPI for hook tests
-    testImplementation 'me.clip:placeholderapi:2.11.7'
+    testImplementation 'me.clip:placeholderapi:2.12.2'
 
     // Embedded Redis for sync tests
     testImplementation 'com.github.codemonstur:embedded-redis:1.4.3'
 }
 
 kotlin {
-    jvmToolchain(21)
+    // Toolchain is JDK 25 because paper-api 26.1.2 (Minecraft 26.1) requires Java 25 to compile.
+    jvmToolchain(25)
+
+    // ...but emit Java 21 bytecode and restrict to the Java 21 API surface so the SAME jar still
+    // loads & runs on Java 21 servers (Minecraft 1.20.5 - 1.21.x). The plugin uses no 26.1-only
+    // API directly; version-specific behavior is handled at runtime via VersionDetector/compat.
+    compilerOptions {
+        jvmTarget.set(org.jetbrains.kotlin.gradle.dsl.JvmTarget.JVM_21)
+        freeCompilerArgs.add("-Xjdk-release=21")
+    }
+}
+
+// The Java loader (XInventoriesLoader) is the server's entry point and MUST be Java 21 bytecode so
+// it loads on Java 21 servers. --release 21 also restricts to the Java 21 platform API.
+tasks.withType(JavaCompile).configureEach {
+    options.release = 21
+}
+
+// Downtargeting to Java 21 (above) makes Gradle advertise this consumer as JVM 21, which would
+// reject paper-api 26.1.2 (published for JVM 25). Override the target-JVM attribute on the compile
+// and test classpaths so the Java-25 paper-api variant resolves while our own bytecode stays at 21.
+['compileClasspath', 'testCompileClasspath', 'testRuntimeClasspath'].each { cfgName ->
+    configurations.named(cfgName).configure {
+        attributes {
+            attribute(org.gradle.api.attributes.java.TargetJvmVersion.TARGET_JVM_VERSION_ATTRIBUTE, 25)
+        }
+    }
 }
 
 processResources {
@@ -235,7 +263,7 @@ build {
 }
 
 runServer {
-    minecraftVersion '1.21.11'
+    minecraftVersion '26.1.2'
 }
 
 test {
@@ -303,6 +331,11 @@ detekt {
 }
 
 tasks.withType(io.gitlab.arturbosch.detekt.Detekt).configureEach {
+    // Detekt 1.23.8 (the latest release) doesn't support JDK 25: it rejects --jvm-target 25 and
+    // fails parsing the JVM version. Detekt runs in-process in the Gradle JVM and does NOT compile
+    // against paper-api, so the lint CI job runs Gradle on JDK 21 (see lint.yml). Targeting 21 here
+    // keeps it consistent.
+    jvmTarget = "21"
     reports {
         // Enable SARIF for GitHub Security tab integration
         sarif.required = true

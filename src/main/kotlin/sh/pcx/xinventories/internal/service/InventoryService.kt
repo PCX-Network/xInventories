@@ -81,55 +81,51 @@ class InventoryService(
 
     /**
      * Handles player quit - saves their inventory.
+     *
+     * @param capturedData an inventory snapshot captured synchronously at quit time via
+     *   [capturePlayerData]. Strongly preferred: it guarantees the saved inventory reflects the
+     *   player's state at the moment they quit, rather than a possibly-empty read on a later tick.
      */
-    suspend fun handlePlayerQuit(player: Player) {
-        if (hasBypass(player)) {
-            Logging.debug { "Player ${player.name} has bypass, skipping inventory save" }
-            playerGroups.remove(player.uniqueId)
-            activeSnapshots.remove(player.uniqueId)
-            // Release lock if sync is enabled
+    suspend fun handlePlayerQuit(player: Player, capturedData: PlayerData? = null) {
+        try {
+            if (hasBypass(player)) {
+                Logging.debug { "Player ${player.name} has bypass, skipping inventory save" }
+                return
+            }
+
+            val groupName = capturedData?.group ?: playerGroups[player.uniqueId]
+                ?: groupService.getGroupForWorld(player.world).name
+
+            // Create inventory version on disconnect if enabled
+            if (config.versioning.enabled && config.versioning.triggerOn.disconnect) {
+                try {
+                    plugin.serviceManager.versioningService.createVersion(
+                        player,
+                        VersionTrigger.DISCONNECT,
+                        mapOf("reason" to "player_disconnect")
+                    )
+                } catch (e: Exception) {
+                    Logging.error("Failed to create version on disconnect for ${player.name}", e)
+                }
+            }
+
+            // Clear version tracking for this player
+            plugin.serviceManager.versioningService.clearPlayerTracking(player.uniqueId)
+
+            // Save current inventory. Prefer the snapshot captured synchronously at quit time so we
+            // never persist an empty/partial inventory read after the player has been removed.
+            saveInventory(player, groupName, preCaptured = capturedData)
+        } finally {
+            // Always release the distributed lock and clean up - even if saving threw - otherwise a
+            // failed save would leave the player's data locked across the network indefinitely.
             val syncService = plugin.serviceManager.syncService
             if (syncService != null && syncService.isEnabled) {
                 syncService.releaseLock(player.uniqueId)
             }
-            // Clean up shared slot cache
             plugin.serviceManager.sharedSlotService.cleanup(player.uniqueId)
-            return
+            playerGroups.remove(player.uniqueId)
+            activeSnapshots.remove(player.uniqueId)
         }
-
-        val groupName = playerGroups[player.uniqueId] ?: groupService.getGroupForWorld(player.world).name
-
-        // Create inventory version on disconnect if enabled
-        if (config.versioning.enabled && config.versioning.triggerOn.disconnect) {
-            try {
-                plugin.serviceManager.versioningService.createVersion(
-                    player,
-                    VersionTrigger.DISCONNECT,
-                    mapOf("reason" to "player_disconnect")
-                )
-            } catch (e: Exception) {
-                Logging.error("Failed to create version on disconnect for ${player.name}", e)
-            }
-        }
-
-        // Clear version tracking for this player
-        plugin.serviceManager.versioningService.clearPlayerTracking(player.uniqueId)
-
-        // Save current inventory
-        saveInventory(player, groupName)
-
-        // Release distributed lock if sync is enabled
-        val syncService = plugin.serviceManager.syncService
-        if (syncService != null && syncService.isEnabled) {
-            syncService.releaseLock(player.uniqueId)
-        }
-
-        // Clean up shared slot cache
-        plugin.serviceManager.sharedSlotService.cleanup(player.uniqueId)
-
-        // Clean up
-        playerGroups.remove(player.uniqueId)
-        activeSnapshots.remove(player.uniqueId)
     }
 
     /**
@@ -192,16 +188,39 @@ class InventoryService(
     }
 
     /**
-     * Saves a player's current inventory.
+     * Synchronously captures a player's current inventory for saving.
+     *
+     * MUST be called on the main thread (e.g. directly inside `PlayerQuitEvent`) while the player is
+     * still fully valid. Persisting the returned data can then happen asynchronously without risking
+     * an empty/partial save from reading the player after they have been removed. Returns null if
+     * the player is bypassed or their group can't be resolved.
      */
-    suspend fun saveInventory(player: Player, groupName: String? = null): Boolean {
+    fun capturePlayerData(player: Player, groupName: String? = null): PlayerData? {
+        if (hasBypass(player)) return null
         val group = groupName ?: playerGroups[player.uniqueId]
+            ?: groupService.getGroupForWorld(player.world).name
+        val groupObj = groupService.getGroup(group) ?: return null
+        return PlayerData.fromPlayer(player, group).also {
+            it.loadFromPlayerExtended(player, groupObj.settings)
+        }
+    }
+
+    /**
+     * Saves a player's current inventory.
+     *
+     * @param preCaptured an inventory snapshot already captured synchronously (see [capturePlayerData]).
+     *   When provided it is used verbatim instead of reading the (possibly offline) player again -
+     *   this is how quit saves avoid losing items.
+     */
+    suspend fun saveInventory(player: Player, groupName: String? = null, preCaptured: PlayerData? = null): Boolean {
+        val group = preCaptured?.group ?: groupName ?: playerGroups[player.uniqueId]
             ?: groupService.getGroupForWorld(player.world).name
 
         val groupObj = groupService.getGroup(group) ?: return false
-        val data = PlayerData.fromPlayer(player, group)
-        // Load extended data (statistics, advancements, recipes) if enabled
-        data.loadFromPlayerExtended(player, groupObj.settings)
+        val data = preCaptured ?: PlayerData.fromPlayer(player, group).also {
+            // Load extended data (statistics, advancements, recipes) if enabled
+            it.loadFromPlayerExtended(player, groupObj.settings)
+        }
 
         // Fire event - always sync since we may be on main thread
         // Paper requires async events to be called from async threads

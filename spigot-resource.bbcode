@@ -5,7 +5,7 @@
 
 [URL='https://github.com/PCX-SH/xInventories/actions/workflows/build.yml'][IMG]https://github.com/PCX-SH/xInventories/actions/workflows/build.yml/badge.svg[/IMG][/URL] [URL='https://github.com/PCX-SH/xInventories/actions/workflows/test.yml'][IMG]https://github.com/PCX-SH/xInventories/actions/workflows/test.yml/badge.svg[/IMG][/URL] [URL='https://codecov.io/gh/PCX-SH/xInventories'][IMG]https://codecov.io/gh/PCX-SH/xInventories/branch/main/graph/badge.svg[/IMG][/URL]
 
-[IMG]https://img.shields.io/badge/Paper%20%7C%20Spigot-1.20.5--1.21.11+-blue[/IMG] [IMG]https://img.shields.io/badge/Java-21+-orange[/IMG] [URL='https://github.com/PCX-SH/xInventories/releases/latest'][IMG]https://img.shields.io/github/v/release/PCX-SH/xInventories?color=green&label=stable[/IMG][/URL] [URL='https://github.com/PCX-SH/xInventories/releases/tag/nightly'][IMG]https://img.shields.io/badge/nightly-latest-purple[/IMG][/URL] [URL='https://github.com/PCX-SH/xInventories'][IMG]https://img.shields.io/github/stars/PCX-SH/xInventories?style=flat&color=yellow[/IMG][/URL]
+[IMG]https://img.shields.io/badge/Paper%20%7C%20Spigot-1.20.5--26.1.2+-blue[/IMG] [IMG]https://img.shields.io/badge/Java-21+-orange[/IMG] [URL='https://github.com/PCX-SH/xInventories/releases/latest'][IMG]https://img.shields.io/github/v/release/PCX-SH/xInventories?color=green&label=stable[/IMG][/URL] [URL='https://github.com/PCX-SH/xInventories/releases/tag/nightly'][IMG]https://img.shields.io/badge/nightly-latest-purple[/IMG][/URL] [URL='https://github.com/PCX-SH/xInventories'][IMG]https://img.shields.io/github/stars/PCX-SH/xInventories?style=flat&color=yellow[/IMG][/URL]
 [/CENTER]
 
 [CENTER][SIZE=5][COLOR=#5e4fa2][B]━━━━━━━━━━ Downloads ━━━━━━━━━━[/B][/COLOR][/SIZE][/CENTER]
@@ -23,7 +23,6 @@ Whether you're running a survival server with a creative world, a minigame netwo
 
 [CENTER][SIZE=5][COLOR=#5e4fa2][B]━━━━━━━━━━ Features ━━━━━━━━━━[/B][/COLOR][/SIZE][/CENTER]
 
-[B][SIZE=4]Core Features[/SIZE][/B]
 [LIST]
 [*][B]Per-World Inventories[/B] - Separate inventories for different worlds or world groups
 [*][B]Per-GameMode Inventories[/B] - Optionally separate inventories by gamemode
@@ -36,10 +35,6 @@ Whether you're running a survival server with a creative world, a minigame netwo
 [*][B]Data Migration[/B] - Seamlessly migrate between storage backends
 [*][B]Full Developer API[/B] - Comprehensive API with events and subscriptions
 [*][B]PlaceholderAPI Support[/B] - Built-in placeholders for scoreboards and more
-[/LIST]
-
-[B][SIZE=4]v1.1.0 Features[/SIZE][/B]
-[LIST]
 [*][B]Inventory Versioning[/B] - Automatic version history with rollback capability
 [*][B]Death Recovery[/B] - Recover inventories lost on death
 [*][B]Player State Separation[/B] - Per-group statistics, advancements, and recipes
@@ -71,11 +66,13 @@ Whether you're running a survival server with a creative world, a minigame netwo
 [CENTER][SIZE=5][COLOR=#5e4fa2][B]━━━━━━━━━━ Requirements ━━━━━━━━━━[/B][/COLOR][/SIZE][/CENTER]
 
 [LIST]
-[*][B]Paper 1.20.5+[/B] or [B]Spigot 1.20.5+[/B] (1.20.5 - 1.21.11+ supported)
-[*][B]Java 21+[/B]
+[*][B]Paper 1.20.5+[/B] or [B]Spigot 1.20.5+[/B] (1.20.5 - 26.1.2+ supported)
+[*][B]Java 21+[/B] (the jar targets Java 21; Minecraft 26.1+ servers require Java 25 per Mojang, and the same jar runs there too)
 [/LIST]
 
-[COLOR=#27ae60][B]New in v1.1.0:[/B] Full Spigot support! The plugin automatically downloads required libraries on Spigot servers.[/COLOR]
+[COLOR=#27ae60][B]New in v1.2.0:[/B] Paper 26.1.2 support (Mojang's new year-based versioning), plus a fix for a GUI bug where items could occasionally be moved out of a menu, and several inventory save/sync hardening fixes.[/COLOR]
+
+[COLOR=#27ae60][B]Since v1.1.0:[/B] Full Spigot support! The plugin automatically downloads required libraries on Spigot servers.[/COLOR]
 
 [CENTER][SIZE=5][COLOR=#5e4fa2][B]━━━━━━━━━━ Installation ━━━━━━━━━━[/B][/COLOR][/SIZE][/CENTER]
 
