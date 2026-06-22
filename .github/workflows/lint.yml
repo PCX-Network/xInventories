@@ -19,7 +19,7 @@ jobs:
 
     steps:
       - name: Checkout repository
-        uses: actions/checkout@v6
+        uses: actions/checkout@v7
 
       # Detekt 1.23.8 (latest release) can't run on JDK 25. The detekt task runs in-process and does
       # not compile against paper-api, so this job runs on JDK 21 (no JDK 25 needed for linting).
