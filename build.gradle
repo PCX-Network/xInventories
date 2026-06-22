@@ -64,7 +64,7 @@ dependencies {
     // Paper API - targeting 26.1.2 (supports 1.20.5+ at runtime via VersionDetector/compat shims)
     // Note: Paper switched to year-based versioning at 26.1; the coordinate format changed from
     // "{VERSION}-R0.1-SNAPSHOT" to "{VERSION}.build.{N}-stable" (no more -SNAPSHOT).
-    compileOnly 'io.papermc.paper:paper-api:26.1.2.build.71-stable'
+    compileOnly 'io.papermc.paper:paper-api:26.1.2.build.72-stable'
 
     // Kotlin - provided by Paper 1.21+, loaded via plugin.yml libraries for 1.20.5-1.20.6
     compileOnly 'org.jetbrains.kotlin:kotlin-stdlib'
@@ -119,7 +119,7 @@ dependencies {
     testImplementation "com.github.ben-manes.caffeine:caffeine:${caffeineVersion}"
     testImplementation "com.zaxxer:HikariCP:${hikariVersion}"
     testImplementation "redis.clients:jedis:${jedisVersion}"
-    testImplementation 'io.papermc.paper:paper-api:26.1.2.build.71-stable'
+    testImplementation 'io.papermc.paper:paper-api:26.1.2.build.72-stable'
     testImplementation('org.mockbukkit.mockbukkit:mockbukkit-v26.1.2:4.113.2') {
         exclude group: 'org.jetbrains.kotlin'
         exclude group: 'org.jetbrains.kotlinx'
