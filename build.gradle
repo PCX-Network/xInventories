@@ -2,7 +2,7 @@ plugins {
     id 'org.jetbrains.kotlin.jvm' version '2.3.0'
     id 'org.jetbrains.kotlin.plugin.serialization' version '2.3.0'
     id 'org.jetbrains.dokka' version '1.9.20'
-    id 'com.gradleup.shadow' version '9.4.2'
+    id 'com.gradleup.shadow' version '9.4.3'
     id 'xyz.jpenilla.run-paper' version '3.0.2'
     // Code coverage with JaCoCo
     id 'jacoco'
@@ -109,7 +109,7 @@ dependencies {
 
     // Testing - use kotlin-test-junit5 to bridge kotlin.test to JUnit 5
     testImplementation "org.jetbrains.kotlin:kotlin-test-junit5:${kotlinVersion}"
-    testImplementation 'org.junit.jupiter:junit-jupiter:6.1.0'
+    testImplementation 'org.junit.jupiter:junit-jupiter:6.1.1'
     testImplementation 'io.mockk:mockk:1.14.11'
     testImplementation "org.jetbrains.kotlinx:kotlinx-coroutines-test:${coroutinesVersion}"
 
@@ -120,7 +120,7 @@ dependencies {
     testImplementation "com.zaxxer:HikariCP:${hikariVersion}"
     testImplementation "redis.clients:jedis:${jedisVersion}"
     testImplementation 'io.papermc.paper:paper-api:26.1.2.build.71-stable'
-    testImplementation('org.mockbukkit.mockbukkit:mockbukkit-v26.1.2:4.113.2') {
+    testImplementation('org.mockbukkit.mockbukkit:mockbukkit-v26.1.2:4.113.4') {
         exclude group: 'org.jetbrains.kotlin'
         exclude group: 'org.jetbrains.kotlinx'
     }
