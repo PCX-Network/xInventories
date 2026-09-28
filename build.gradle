@@ -2,8 +2,8 @@ plugins {
     id 'org.jetbrains.kotlin.jvm' version '2.3.0'
     id 'org.jetbrains.kotlin.plugin.serialization' version '2.3.0'
     id 'org.jetbrains.dokka' version '1.9.20'
-    id 'com.gradleup.shadow' version '9.4.2'
-    id 'xyz.jpenilla.run-paper' version '3.0.2'
+    id 'com.gradleup.shadow' version '9.6.1'
+    id 'xyz.jpenilla.run-paper' version '3.1.0'
     // Code coverage with JaCoCo
     id 'jacoco'
     // Static analysis with Detekt
@@ -18,7 +18,7 @@ ext {
     kotlinVersion = '2.3.0'
     coroutinesVersion = '1.11.0'
     serializationVersion = '1.11.0'
-    caffeineVersion = '3.2.4'
+    caffeineVersion = '3.3.0'
     hikariVersion = '7.1.0'
     jedisVersion = '7.5.2'
     slf4jVersion = '2.0.16'
@@ -88,7 +88,7 @@ dependencies {
     compileOnly('com.github.MilkBowl:VaultAPI:1.7.1') {
         exclude group: 'org.bukkit', module: 'bukkit'
     }
-    compileOnly 'me.clip:placeholderapi:2.12.2'
+    compileOnly 'me.clip:placeholderapi:2.12.3'
     compileOnly 'net.luckperms:api:5.5'
 
     // bStats metrics
@@ -109,7 +109,7 @@ dependencies {
 
     // Testing - use kotlin-test-junit5 to bridge kotlin.test to JUnit 5
     testImplementation "org.jetbrains.kotlin:kotlin-test-junit5:${kotlinVersion}"
-    testImplementation 'org.junit.jupiter:junit-jupiter:6.1.0'
+    testImplementation 'org.junit.jupiter:junit-jupiter:6.1.3'
     testImplementation 'io.mockk:mockk:1.14.11'
     testImplementation "org.jetbrains.kotlinx:kotlinx-coroutines-test:${coroutinesVersion}"
 
@@ -120,11 +120,11 @@ dependencies {
     testImplementation "com.zaxxer:HikariCP:${hikariVersion}"
     testImplementation "redis.clients:jedis:${jedisVersion}"
     testImplementation 'io.papermc.paper:paper-api:26.1.2.build.71-stable'
-    testImplementation('org.mockbukkit.mockbukkit:mockbukkit-v26.1.2:4.113.2') {
+    testImplementation('org.mockbukkit.mockbukkit:mockbukkit-v26.1.2:4.115.0') {
         exclude group: 'org.jetbrains.kotlin'
         exclude group: 'org.jetbrains.kotlinx'
     }
-    testImplementation 'org.xerial:sqlite-jdbc:3.53.2.0'
+    testImplementation 'org.xerial:sqlite-jdbc:3.53.4.0'
     // Vault API for economy tests
     testImplementation('com.github.MilkBowl:VaultAPI:1.7.1') {
         exclude group: 'org.bukkit', module: 'bukkit'
@@ -132,10 +132,10 @@ dependencies {
     // LuckPerms API for hook tests
     testImplementation 'net.luckperms:api:5.5'
     // PlaceholderAPI for hook tests
-    testImplementation 'me.clip:placeholderapi:2.12.2'
+    testImplementation 'me.clip:placeholderapi:2.12.3'
 
     // Embedded Redis for sync tests
-    testImplementation 'com.github.codemonstur:embedded-redis:1.4.3'
+    testImplementation 'com.github.codemonstur:embedded-redis:1.4.4'
 }
 
 kotlin {
