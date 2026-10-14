@@ -46,4 +46,18 @@ interface GUI {
      * Refreshes the GUI contents.
      */
     fun refresh(player: Player)
+
+    /**
+     * Raw slots of this GUI's top inventory that hold real, movable items. Vanilla item movement
+     * (pick up, place, split, shift-click out, hotbar swap, drag) is allowed on these slots and on
+     * the player's own inventory; everything else in the GUI stays read-only. Empty for the
+     * ordinary menu GUIs.
+     */
+    fun editableSlots(): Set<Int> = emptySet()
+
+    /**
+     * Called on the main thread, one tick after a vanilla click or drag changed at least one of
+     * [editableSlots], once the server has applied the change to the inventory.
+     */
+    fun onEditableSlotsChanged(player: Player) {}
 }

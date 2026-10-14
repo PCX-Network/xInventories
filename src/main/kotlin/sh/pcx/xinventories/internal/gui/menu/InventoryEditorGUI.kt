@@ -2,6 +2,7 @@ package sh.pcx.xinventories.internal.gui.menu
 
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.runBlocking
+import kotlinx.coroutines.withContext
 import net.kyori.adventure.text.Component
 import net.kyori.adventure.text.format.NamedTextColor
 import net.kyori.adventure.text.format.TextDecoration
@@ -10,23 +11,28 @@ import org.bukkit.GameMode
 import org.bukkit.Material
 import org.bukkit.entity.Player
 import org.bukkit.event.inventory.ClickType
-import org.bukkit.event.inventory.InventoryClickEvent
 import org.bukkit.event.inventory.InventoryCloseEvent
 import org.bukkit.inventory.Inventory
 import org.bukkit.inventory.ItemStack
 import sh.pcx.xinventories.PluginContext
+import sh.pcx.xinventories.api.event.InventoryLoadEvent
 import sh.pcx.xinventories.internal.gui.AbstractGUI
 import sh.pcx.xinventories.internal.gui.GUIComponents
 import sh.pcx.xinventories.internal.gui.GUIItem
 import sh.pcx.xinventories.internal.gui.GUIItemBuilder
-import sh.pcx.xinventories.internal.model.AuditAction
 import sh.pcx.xinventories.internal.model.PlayerData
 import sh.pcx.xinventories.internal.util.Logging
 import java.util.*
 
 /**
  * GUI for editing a player's stored inventory.
- * Allows drag-and-drop item placement, adding/removing items, and modifying amounts.
+ *
+ * Slots 0-35 hold the stored main-inventory items themselves, so an admin moves them exactly as
+ * in a chest: pick up, place, split, shift-click into their own inventory, drag from their own
+ * inventory. Armor and offhand are displayed read-only. Because items really leave the editor when
+ * taken out, the editor cannot be closed without persisting: every close saves, and if the target
+ * is online in this group the saved inventory is applied to them immediately. That is what keeps
+ * "take an item out" from becoming "duplicate an item".
  */
 class InventoryEditorGUI(
     plugin: PluginContext,
@@ -40,16 +46,14 @@ class InventoryEditorGUI(
     54
 ) {
 
-    // Working copy of the inventory that can be modified
-    private val workingInventory = mutableMapOf<Int, ItemStack?>()
-    private val workingArmor = mutableMapOf<Int, ItemStack?>()
-    private var workingOffhand: ItemStack? = null
-
-    // Original data for comparison
+    // Stored data the editor was opened with; armor, offhand, ender chest and stats are kept from it.
     private var originalData: PlayerData? = null
 
-    // Track if changes have been made
+    // Set by the GUI manager once a vanilla click/drag changed an editable slot.
     private var hasUnsavedChanges = false
+
+    // Guards against the close hook and an explicit Save both persisting the same edit.
+    private var saving = false
 
     // Editable slots (main inventory: 0-35)
     private val editableSlots = (0..35).toSet()
@@ -63,17 +67,13 @@ class InventoryEditorGUI(
         originalData = runBlocking {
             plugin.serviceManager.storageService.load(targetUUID, groupName, gameMode)
         }
+    }
 
-        // Copy to working inventory
-        originalData?.let { data ->
-            data.mainInventory.forEach { (slot, item) ->
-                workingInventory[slot] = item.clone()
-            }
-            data.armorInventory.forEach { (slot, item) ->
-                workingArmor[slot] = item.clone()
-            }
-            workingOffhand = data.offhand?.clone()
-        }
+    override fun editableSlots(): Set<Int> = if (originalData != null) editableSlots else emptySet()
+
+    override fun onEditableSlotsChanged(player: Player) {
+        hasUnsavedChanges = true
+        refreshControls()
     }
 
     private fun setupItems() {
@@ -102,24 +102,21 @@ class InventoryEditorGUI(
             return
         }
 
-        // Display main inventory contents (editable)
+        // Main inventory contents: the real items, no wrapper, empty slots left empty so vanilla
+        // can place into them.
         for (i in 0..35) {
-            val item = workingInventory[i]
+            val item = data.mainInventory[i]
             if (item != null && item.type != Material.AIR) {
-                // Create editable item wrapper
-                setItem(i, createEditableItem(i, item))
-            } else {
-                // Empty slot - clickable to add items
-                setItem(i, createEmptySlot(i))
+                setItem(i, GUIItem(item.clone()))
             }
         }
 
         // Armor slots (display only in this view - slots 36-39)
         val armorSlots = listOf(39, 38, 37, 36) // Helmet, chest, legs, boots
         for ((index, armorSlot) in armorSlots.withIndex()) {
-            val item = workingArmor[3 - index]
+            val item = data.armorInventory[3 - index]
             if (item != null && item.type != Material.AIR) {
-                setItem(armorSlot, GUIItem(item.clone()))
+                setItem(armorSlot, GUIItem(readOnlyCopy(item)))
             } else {
                 val placeholder = when (index) {
                     0 -> createArmorPlaceholder("Helmet", Material.LEATHER_HELMET)
@@ -133,9 +130,9 @@ class InventoryEditorGUI(
         }
 
         // Offhand (slot 40)
-        val offhandItem = workingOffhand
+        val offhandItem = data.offhand
         if (offhandItem != null && offhandItem.type != Material.AIR) {
-            setItem(40, GUIItem(offhandItem.clone()))
+            setItem(40, GUIItem(readOnlyCopy(offhandItem)))
         } else {
             setItem(40, createArmorPlaceholder("Offhand", Material.SHIELD))
         }
@@ -150,46 +147,37 @@ class InventoryEditorGUI(
             setItem(i, GUIComponents.filler(Material.BLACK_STAINED_GLASS_PANE))
         }
 
+        val target = Bukkit.getPlayer(targetUUID)
+        val targetLive = target != null && isTargetInThisGroup(target)
+
         // Save button
         setItem(45, GUIItemBuilder()
             .material(Material.LIME_WOOL)
             .name("Save Changes", NamedTextColor.GREEN)
-            .lore("Click to save all changes")
+            .lore("Click to save now")
+            .lore("Changes are also saved when you close")
             .lore("")
             .lore(if (hasUnsavedChanges) "You have unsaved changes!" else "No changes to save")
             .onClick { event ->
                 val player = event.whoClicked as Player
-                saveChanges(player)
+                if (!hasUnsavedChanges) {
+                    player.sendMessage(Component.text("No changes to save.", NamedTextColor.YELLOW))
+                } else {
+                    saveChanges(player, thenClose = false)
+                }
             }
             .build()
         )
 
-        // Cancel button
+        // Back button
         setItem(46, GUIItemBuilder()
-            .material(Material.RED_WOOL)
-            .name("Cancel", NamedTextColor.RED)
-            .lore("Discard changes and go back")
-            .lore("")
-            .lore(if (hasUnsavedChanges) "Warning: Unsaved changes will be lost!" else "")
+            .material(Material.ARROW)
+            .name("Back", NamedTextColor.GRAY)
+            .lore("Save and return to player details")
             .onClick { event ->
                 val player = event.whoClicked as Player
-                if (hasUnsavedChanges) {
-                    // Show confirmation
-                    ConfirmationGUI(
-                        plugin,
-                        Component.text("Discard Changes?", NamedTextColor.RED),
-                        "You have unsaved changes.",
-                        "Click Confirm to discard them.",
-                        onConfirm = {
-                            PlayerDetailGUI(plugin, targetUUID, targetName).open(player)
-                        },
-                        onCancel = {
-                            InventoryEditorGUI(plugin, targetUUID, targetName, groupName, gameMode).open(player)
-                        }
-                    ).open(player)
-                } else {
-                    PlayerDetailGUI(plugin, targetUUID, targetName).open(player)
-                }
+                // Navigating away closes this inventory, and the close hook saves.
+                PlayerDetailGUI(plugin, targetUUID, targetName).open(player)
             }
             .build()
         )
@@ -202,15 +190,16 @@ class InventoryEditorGUI(
             .lore("")
             .lore("Shift-click to confirm")
             .onClick { event ->
+                val player = event.whoClicked as Player
                 if (event.click == ClickType.SHIFT_LEFT || event.click == ClickType.SHIFT_RIGHT) {
-                    clearWorkingInventory()
+                    clearEditableSlots()
                     hasUnsavedChanges = true
-                    refreshDisplay(event.whoClicked as Player)
-                    (event.whoClicked as Player).sendMessage(
-                        Component.text("Inventory cleared. Remember to save!", NamedTextColor.YELLOW)
+                    refreshControls()
+                    player.sendMessage(
+                        Component.text("Inventory cleared. It is saved when you close the editor.", NamedTextColor.YELLOW)
                     )
                 } else {
-                    (event.whoClicked as Player).sendMessage(
+                    player.sendMessage(
                         Component.text("Shift-click to confirm clearing inventory.", NamedTextColor.RED)
                     )
                 }
@@ -226,81 +215,61 @@ class InventoryEditorGUI(
         setItem(49, GUIItemBuilder()
             .material(indicatorMaterial)
             .name(indicatorName, indicatorColor)
-            .lore(if (hasUnsavedChanges) "Click Save to keep changes" else "All changes saved")
+            .lore(if (hasUnsavedChanges) "Saved when you click Save or close" else "All changes saved")
             .build()
         )
 
         // Instructions
-        setItem(51, GUIItemBuilder()
+        val builder = GUIItemBuilder()
             .material(Material.BOOK)
             .name("Instructions", NamedTextColor.AQUA)
-            .lore("Left-click: Pick up/place item")
-            .lore("Right-click: Decrease amount")
-            .lore("Shift-click: Remove item")
-            .lore("Middle-click: Clone item")
-            .build()
-        )
+            .lore("Move items like in a chest:")
+            .lore("Click, drag, split or shift-click them")
+            .lore("in and out of your own inventory.")
+            .lore("Armor and offhand are view only.")
+            .lore("")
+            .lore("Changes are saved when you close.")
+        if (targetLive) {
+            builder.lore("$targetName is online in this group:")
+                .lore("their inventory is replaced on save.")
+        }
+        setItem(51, builder.build())
 
         // Close button
         setItem(53, GUIItemBuilder()
             .material(Material.BARRIER)
             .name("Close", NamedTextColor.RED)
-            .lore(if (hasUnsavedChanges) "Warning: Unsaved changes!" else "")
+            .lore("Save and close")
             .onClick { event ->
-                val player = event.whoClicked as Player
-                if (hasUnsavedChanges) {
-                    player.sendMessage(
-                        Component.text("You have unsaved changes! Save or Cancel first.", NamedTextColor.RED)
-                    )
-                } else {
-                    player.closeInventory()
-                }
+                (event.whoClicked as Player).closeInventory()
             }
             .build()
         )
     }
 
-    private fun createEditableItem(slot: Int, item: ItemStack): GUIItem {
-        val displayItem = item.clone()
-        val meta = displayItem.itemMeta
-
-        // Add edit indicator to lore
-        val existingLore = meta.lore()?.toMutableList() ?: mutableListOf()
-        existingLore.add(Component.empty())
-        existingLore.add(
-            Component.text("Click to edit", NamedTextColor.YELLOW)
-                .decoration(TextDecoration.ITALIC, false)
-        )
-        meta.lore(existingLore)
-        displayItem.itemMeta = meta
-
-        return GUIItem(displayItem) { event ->
-            handleItemClick(event, slot)
+    /** Re-renders the control row only; the editable slots are owned by the live inventory. */
+    private fun refreshControls() {
+        for (slot in 45..53) items.remove(slot)
+        setupControlPanel()
+        val inv = inventory ?: return
+        for (slot in 45..53) {
+            inv.setItem(slot, items[slot]?.itemStack)
         }
     }
 
-    private fun createEmptySlot(slot: Int): GUIItem {
-        val item = ItemStack(Material.LIGHT_GRAY_STAINED_GLASS_PANE)
-        val meta = item.itemMeta
-        meta.displayName(
-            Component.text("Empty Slot")
+    private fun readOnlyCopy(item: ItemStack): ItemStack {
+        val copy = item.clone()
+        val meta = copy.itemMeta ?: return copy
+        val lore = meta.lore()?.toMutableList() ?: mutableListOf()
+        lore.add(Component.empty())
+        lore.add(
+            Component.text("View only")
                 .color(NamedTextColor.DARK_GRAY)
                 .decoration(TextDecoration.ITALIC, false)
         )
-        meta.lore(listOf(
-            Component.text("Slot #$slot")
-                .color(NamedTextColor.GRAY)
-                .decoration(TextDecoration.ITALIC, false),
-            Component.empty(),
-            Component.text("Click with item to place")
-                .color(NamedTextColor.YELLOW)
-                .decoration(TextDecoration.ITALIC, false)
-        ))
-        item.itemMeta = meta
-
-        return GUIItem(item) { event ->
-            handleItemClick(event, slot)
-        }
+        meta.lore(lore)
+        copy.itemMeta = meta
+        return copy
     }
 
     private fun createArmorPlaceholder(name: String, material: Material): GUIItem {
@@ -320,105 +289,42 @@ class InventoryEditorGUI(
         return GUIItem(item)
     }
 
-    private fun handleItemClick(event: InventoryClickEvent, slot: Int) {
-        val player = event.whoClicked as Player
-
-        // Only allow editing main inventory slots
-        if (slot !in editableSlots) {
-            player.sendMessage(Component.text("This slot cannot be edited.", NamedTextColor.RED))
-            return
-        }
-
-        val currentItem = workingInventory[slot]
-        val cursorItem = event.cursor
-
-        when (event.click) {
-            ClickType.LEFT -> {
-                // Swap cursor with slot
-                if (cursorItem != null && cursorItem.type != Material.AIR) {
-                    // Place cursor item
-                    workingInventory[slot] = cursorItem.clone()
-                    hasUnsavedChanges = true
-                    refreshDisplay(player)
-                } else if (currentItem != null && currentItem.type != Material.AIR) {
-                    // Pick up item (just show info for now since cursor manipulation is complex in GUIs)
-                    player.sendMessage(
-                        Component.text("Item: ${currentItem.type.name} x${currentItem.amount}", NamedTextColor.AQUA)
-                    )
-                }
-            }
-
-            ClickType.RIGHT -> {
-                // Decrease amount by 1
-                if (currentItem != null && currentItem.type != Material.AIR) {
-                    if (currentItem.amount > 1) {
-                        currentItem.amount = currentItem.amount - 1
-                        workingInventory[slot] = currentItem
-                    } else {
-                        workingInventory.remove(slot)
-                    }
-                    hasUnsavedChanges = true
-                    refreshDisplay(player)
-                }
-            }
-
-            ClickType.SHIFT_LEFT, ClickType.SHIFT_RIGHT -> {
-                // Remove item completely
-                if (currentItem != null) {
-                    workingInventory.remove(slot)
-                    hasUnsavedChanges = true
-                    refreshDisplay(player)
-                    player.sendMessage(
-                        Component.text("Removed item from slot $slot", NamedTextColor.YELLOW)
-                    )
-                }
-            }
-
-            ClickType.MIDDLE -> {
-                // Show item info
-                if (currentItem != null && currentItem.type != Material.AIR) {
-                    player.sendMessage(Component.text("=== Item Info ===", NamedTextColor.GOLD))
-                    player.sendMessage(Component.text("Type: ${currentItem.type.name}", NamedTextColor.GRAY))
-                    player.sendMessage(Component.text("Amount: ${currentItem.amount}", NamedTextColor.GRAY))
-                    currentItem.enchantments.forEach { (ench, level) ->
-                        player.sendMessage(Component.text("Enchant: ${ench.key.key} $level", NamedTextColor.AQUA))
-                    }
-                }
-            }
-
-            else -> {
-                // Other click types - ignore
-            }
+    private fun clearEditableSlots() {
+        val inv = inventory ?: return
+        for (slot in editableSlots) {
+            inv.setItem(slot, null)
         }
     }
 
-    private fun refreshDisplay(player: Player) {
-        // Clear and re-setup items
-        items.clear()
-        setupItems()
-
-        // Update the actual inventory
-        inventory?.let { inv ->
-            items.forEach { (slot, guiItem) ->
-                if (slot in 0 until size) {
-                    inv.setItem(slot, guiItem.itemStack)
-                }
+    /** Main-thread snapshot of what is currently in the editable slots. */
+    private fun snapshotEditableSlots(): Map<Int, ItemStack> {
+        val inv = inventory ?: return emptyMap()
+        val result = mutableMapOf<Int, ItemStack>()
+        for (slot in editableSlots) {
+            val item = inv.getItem(slot)
+            if (item != null && item.type != Material.AIR) {
+                result[slot] = item.clone()
             }
         }
+        return result
     }
 
-    private fun clearWorkingInventory() {
-        workingInventory.clear()
+    private fun isTargetInThisGroup(target: Player): Boolean {
+        val currentGroup = plugin.serviceManager.inventoryService.getCurrentGroup(target)
+            ?: plugin.serviceManager.groupService.getGroupForWorld(target.world).name
+        if (!currentGroup.equals(groupName, ignoreCase = true)) return false
+        // When gamemodes are not separated the stored gamemode is the default one, so only
+        // compare it when the editor was opened for a specific non-default gamemode.
+        return !plugin.configManager.mainConfig.features.separateGamemodeInventories || target.gameMode == gameMode
     }
 
-    private fun saveChanges(player: Player) {
-        if (!hasUnsavedChanges) {
-            player.sendMessage(Component.text("No changes to save.", NamedTextColor.YELLOW))
-            return
-        }
-
-        // Create updated PlayerData
+    private fun saveChanges(player: Player, thenClose: Boolean) {
         val original = originalData ?: return
+        if (saving) return
+        saving = true
+
+        val edited = snapshotEditableSlots()
+        hasUnsavedChanges = false
 
         plugin.scope.launch(plugin.storageDispatcher) {
             try {
@@ -430,12 +336,7 @@ class InventoryEditorGUI(
                     gameMode = gameMode
                 )
 
-                // Copy working inventory
-                workingInventory.forEach { (slot, item) ->
-                    if (item != null && item.type != Material.AIR) {
-                        updatedData.mainInventory[slot] = item.clone()
-                    }
-                }
+                edited.forEach { (slot, item) -> updatedData.mainInventory[slot] = item }
 
                 // Copy armor (unchanged)
                 original.armorInventory.forEach { (slot, item) ->
@@ -473,42 +374,54 @@ class InventoryEditorGUI(
                     details = "Edited inventory via GUI"
                 )
 
-                kotlinx.coroutines.withContext(plugin.mainThreadDispatcher) {
-                    player.sendMessage(
-                        Component.text("Changes saved successfully!", NamedTextColor.GREEN)
+                // An online target standing in this group would otherwise overwrite the edit with
+                // their live inventory on the next save, so apply the edit to them now.
+                val target = Bukkit.getPlayer(targetUUID)
+                var applied = false
+                if (target != null && target.isOnline && withContext(plugin.mainThreadDispatcher) { isTargetInThisGroup(target) }) {
+                    val group = plugin.serviceManager.groupService.getGroup(groupName)
+                        ?: plugin.serviceManager.groupService.getGroupForWorld(target.world)
+                    plugin.serviceManager.inventoryService.loadInventory(
+                        target,
+                        group.toApiModel(),
+                        InventoryLoadEvent.LoadReason.COMMAND
                     )
-                    hasUnsavedChanges = false
-
-                    // Update original data reference
-                    originalData = updatedData
-
-                    // Refresh display
-                    refreshDisplay(player)
+                    applied = true
                 }
 
+                withContext(plugin.mainThreadDispatcher) {
+                    originalData = updatedData
+                    player.sendMessage(
+                        Component.text(
+                            if (applied) "Changes saved and applied to $targetName." else "Changes saved successfully!",
+                            NamedTextColor.GREEN
+                        )
+                    )
+                    if (!thenClose) refreshControls()
+                }
             } catch (e: Exception) {
                 Logging.error("Failed to save inventory changes for $targetName", e)
-                kotlinx.coroutines.withContext(plugin.mainThreadDispatcher) {
+                withContext(plugin.mainThreadDispatcher) {
+                    hasUnsavedChanges = true
                     player.sendMessage(
                         Component.text("Failed to save changes: ${e.message}", NamedTextColor.RED)
                     )
                 }
+            } finally {
+                saving = false
             }
         }
     }
 
     override fun onClose(event: InventoryCloseEvent) {
         val player = event.player as? Player ?: return
-
         if (hasUnsavedChanges) {
-            player.sendMessage(
-                Component.text("Warning: You had unsaved changes that were discarded.", NamedTextColor.RED)
-            )
+            saveChanges(player, thenClose = true)
         }
     }
 
     override fun fillEmptySlots(inventory: Inventory) {
-        // Don't fill empty slots in editor - they should be clickable
+        // Don't fill editable slots - vanilla needs them empty to place into.
         // Only fill non-inventory areas
         val fillerSlots = (41..44).toList()
         val filler = GUIComponents.filler(Material.GRAY_STAINED_GLASS_PANE)

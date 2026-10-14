@@ -74,28 +74,58 @@ class GUIManager(private val plugin: PluginContext) : Listener {
         // inventory, so it stays correct even when the tracking maps are out of sync (after a
         // reload, during navigation, or on rapid re-open) - which is what previously let items
         // leak out with no handler firing.
-        val holder = event.view.topInventory.holder as? XInvGuiHolder ?: return
+        val top = event.view.topInventory
+        val holder = top.holder as? XInvGuiHolder ?: return
         val gui = holder.gui
+        val editable = gui.editableSlots()
+        val action = event.action
 
-        // Cancel ALL clicks unconditionally and FIRST, before any further branching. Any click while
-        // one of our GUIs is the top inventory - including shift-click, number-key swaps,
-        // collect-to-cursor, and clicks originating in the player's own inventory - must never move
-        // items. Cancelling up front is what guarantees nothing slips through.
-        event.isCancelled = true
-        event.result = org.bukkit.event.Event.Result.DENY
-
-        // Pure item-move actions are never treated as a button activation.
-        if (event.action == InventoryAction.MOVE_TO_OTHER_INVENTORY ||
-            event.action == InventoryAction.COLLECT_TO_CURSOR ||
-            event.action == InventoryAction.HOTBAR_SWAP ||
-            event.action == InventoryAction.HOTBAR_MOVE_AND_READD) {
-            return // Already cancelled above; don't dispatch to slot handlers.
+        // Two actions can pull items out of the GUI no matter which slot was clicked: a
+        // double-click gathers matching stacks from both inventories, and a creative middle-click
+        // clones whatever is under the cursor. Neither has a legitimate use in any of our GUIs.
+        if (action == InventoryAction.COLLECT_TO_CURSOR || action == InventoryAction.CLONE_STACK) {
+            deny(event)
+            return
         }
 
-        // Only dispatch slot logic for clicks inside our GUI (the top inventory). Clicks in the
-        // player's own inventory are already cancelled above; there's nothing else to do.
-        val clickedInventory = event.clickedInventory ?: return
-        if (clickedInventory != event.view.topInventory) {
+        val clicked = event.clickedInventory
+        if (clicked == null) {
+            // Click outside the window: drops whatever is on the cursor. The cursor can only hold
+            // the player's own items, or items from an editable slot the admin is deliberately
+            // discarding, so this is fine for an editor and pointless for a read-only menu.
+            if (editable.isEmpty()) deny(event)
+            return
+        }
+
+        if (clicked != top) {
+            // The player's own inventory. Rearranging it is allowed (it is what lets an admin
+            // pick an item up to drop into an editor or onto the restriction hopper), but a
+            // shift-click would push the item into the GUI, which only an editor may accept.
+            if (action == InventoryAction.MOVE_TO_OTHER_INVENTORY) {
+                if (editable.isEmpty()) {
+                    deny(event)
+                } else {
+                    scheduleChanged(gui, player)
+                }
+            }
+            return
+        }
+
+        val slot = event.rawSlot
+        if (slot in editable) {
+            // A real item slot of an editor: let vanilla move things, then tell the GUI.
+            scheduleChanged(gui, player)
+            return
+        }
+
+        // A button or display item. Cancel ALL clicks unconditionally and FIRST, before any further
+        // branching. Shift-click, number-key swaps, drops and plain pickups must never move it.
+        deny(event)
+
+        // Pure item-move actions are never treated as a button activation.
+        if (action == InventoryAction.MOVE_TO_OTHER_INVENTORY ||
+            action == InventoryAction.HOTBAR_SWAP ||
+            action == InventoryAction.HOTBAR_MOVE_AND_READD) {
             return
         }
 
@@ -109,12 +139,37 @@ class GUIManager(private val plugin: PluginContext) : Listener {
 
     @EventHandler(priority = EventPriority.LOWEST, ignoreCancelled = false)
     fun onInventoryDrag(event: InventoryDragEvent) {
-        // Cancel any drag while one of our GUIs is the top inventory. This covers drags that span
-        // both the GUI and the player's inventory, and drags entirely within either one.
-        if (event.view.topInventory.holder !is XInvGuiHolder) return
+        val player = event.whoClicked as? Player ?: return
+        val top = event.view.topInventory
+        val holder = top.holder as? XInvGuiHolder ?: return
+        val editable = holder.gui.editableSlots()
 
+        // A drag may touch the player's own slots and an editor's item slots; anything that would
+        // land on a button or display item cancels the whole drag.
+        val touchesGui = event.rawSlots.any { it < top.size }
+        val allowed = event.rawSlots.all { it >= top.size || it in editable }
+        if (!allowed) {
+            deny(event)
+            return
+        }
+        if (touchesGui) scheduleChanged(holder.gui, player)
+    }
+
+    private fun deny(event: org.bukkit.event.Cancellable) {
         event.isCancelled = true
-        event.result = org.bukkit.event.Event.Result.DENY
+        if (event is InventoryClickEvent) event.result = org.bukkit.event.Event.Result.DENY
+        if (event is InventoryDragEvent) event.result = org.bukkit.event.Event.Result.DENY
+    }
+
+    /** The inventory only reflects a vanilla click after the event, so notify on the next tick. */
+    private fun scheduleChanged(gui: GUI, player: Player) {
+        plugin.plugin.server.scheduler.runTask(plugin.plugin, Runnable {
+            try {
+                gui.onEditableSlotsChanged(player)
+            } catch (e: Exception) {
+                Logging.error("Error handling GUI edit for ${player.name}", e)
+            }
+        })
     }
 
     @EventHandler(priority = EventPriority.MONITOR, ignoreCancelled = false)
