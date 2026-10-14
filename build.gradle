@@ -65,10 +65,10 @@ repositories {
 }
 
 dependencies {
-    // Paper API - targeting 26.1.2 (supports 1.20.5+ at runtime via VersionDetector/compat shims)
+    // Paper API - targeting 26.3 (supports 1.20.5+ at runtime via VersionDetector/compat shims)
     // Note: Paper switched to year-based versioning at 26.1; the coordinate format changed from
     // "{VERSION}-R0.1-SNAPSHOT" to "{VERSION}.build.{N}-stable" (no more -SNAPSHOT).
-    compileOnly 'io.papermc.paper:paper-api:26.1.2.build.71-stable'
+    compileOnly 'io.papermc.paper:paper-api:26.3.build.181-stable'
 
     // Kotlin - provided by Paper 1.21+, loaded via plugin.yml libraries for 1.20.5-1.20.6
     compileOnly 'org.jetbrains.kotlin:kotlin-stdlib'
@@ -123,8 +123,9 @@ dependencies {
     testImplementation "com.github.ben-manes.caffeine:caffeine:${caffeineVersion}"
     testImplementation "com.zaxxer:HikariCP:${hikariVersion}"
     testImplementation "redis.clients:jedis:${jedisVersion}"
-    testImplementation 'io.papermc.paper:paper-api:26.1.2.build.71-stable'
-    testImplementation('org.mockbukkit.mockbukkit:mockbukkit-v26.1.2:4.113.2') {
+    testImplementation 'io.papermc.paper:paper-api:26.3.build.181-stable'
+    // Newest MockBukkit line available (there is no mockbukkit-v26.3 yet).
+    testImplementation('org.mockbukkit.mockbukkit:mockbukkit-v26.2:4.117.0') {
         exclude group: 'org.jetbrains.kotlin'
         exclude group: 'org.jetbrains.kotlinx'
     }
@@ -143,7 +144,7 @@ dependencies {
 }
 
 kotlin {
-    // Toolchain is JDK 25 because paper-api 26.1.2 (Minecraft 26.1) requires Java 25 to compile.
+    // Toolchain is JDK 25 because paper-api 26.x (Minecraft 26.1+) requires Java 25 to compile.
     jvmToolchain(25)
 
     // ...but emit Java 21 bytecode and restrict to the Java 21 API surface so the SAME jar still
@@ -162,7 +163,7 @@ tasks.withType(JavaCompile).configureEach {
 }
 
 // Downtargeting to Java 21 (above) makes Gradle advertise this consumer as JVM 21, which would
-// reject paper-api 26.1.2 (published for JVM 25). Override the target-JVM attribute on the compile
+// reject paper-api 26.x (published for JVM 25). Override the target-JVM attribute on the compile
 // and test classpaths so the Java-25 paper-api variant resolves while our own bytecode stays at 21.
 ['compileClasspath', 'testCompileClasspath', 'testRuntimeClasspath'].each { cfgName ->
     configurations.named(cfgName).configure {
@@ -267,7 +268,7 @@ build {
 }
 
 runServer {
-    minecraftVersion '26.1.2'
+    minecraftVersion '26.3'
 }
 
 // ==================== Plugwright E2E Configuration ====================
@@ -278,6 +279,8 @@ plugwright {
     testsDir.set(file('src/test/e2e'))
     environments { envs ->
         envs.create('local', LocalMode.INSTANCE) { spec ->
+            // Newest Paper the mineflayer bots can join (minecraft-data stops at 26.1); the
+            // plugin itself is compiled against the latest Paper API (see dependencies).
             spec.minecraftVersion.set('26.1.2')
             spec.acceptEula.set(true)
             spec.port.set(25568)

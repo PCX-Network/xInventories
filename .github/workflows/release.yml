@@ -67,7 +67,7 @@ jobs:
             3. Restart your server (Paper will download dependencies automatically)
 
             ### Requirements
-            - **Paper 1.20.5+** (1.20.5 - 26.1.2+)
+            - **Paper 1.20.5+** (1.20.5 - 26.3)
             - **Java 21+** (Minecraft 26.1+ servers require Java 25; the jar runs on both)
 
             ---

@@ -4,20 +4,20 @@
 # broad compatibility across the Minecraft ecosystem.
 #
 # Strategy matrix:
-# - paper-version: [1.20.5, 1.20.6, 1.21, 1.21.1, 1.21.3, 1.21.4, 26.1.2]
-# - build java-version: 25 (paper-api 26.1.2 requires Java 25 to COMPILE)
+# - paper-version: [1.20.5, 1.20.6, 1.21, 1.21.1, 1.21.3, 1.21.4, 26.1.2, 26.3]
+# - build java-version: 25 (paper-api 26.3 requires Java 25 to COMPILE)
 #
-# IMPORTANT: The plugin is compiled against paper-api 26.1.2 on JDK 25 but emits Java 21 bytecode,
+# IMPORTANT: The plugin is compiled against paper-api 26.3 on JDK 25 but emits Java 21 bytecode,
 # so the single jar runs on both Java 21 servers (1.20.5 - 1.21.x) and Java 25 servers (26.1.x).
 #
 # Testing approach:
 # 1. Build the plugin with Gradle (JDK 25)
-# 2. Run unit tests (MockBukkit v26.1.2)
+# 2. Run unit tests (MockBukkit v26.2)
 # 3. Use run-paper for smoke tests (start server, verify plugin loads)
 #
 # Note: smoke-testing OLDER (Java 21) Paper servers requires running the server under JDK 21 while
 # building under JDK 25 (per-version javaLauncher). That dual-JDK matrix is a known follow-up; for
-# now the smoke test covers the Java 25 target (26.1.2).
+# now the smoke test covers the Java 25 target (26.3).
 #
 # Trigger: on PR to main (not every push to avoid excessive CI runs)
 
@@ -72,7 +72,7 @@ jobs:
       # Don't fail fast - we want to see results for all versions
       fail-fast: false
       matrix:
-        paper-version: ['1.20.5', '1.20.6', '1.21', '1.21.1', '1.21.3', '1.21.4', '26.1.2']
+        paper-version: ['1.20.5', '1.20.6', '1.21', '1.21.1', '1.21.3', '1.21.4', '26.1.2', '26.3']
         java-version: ['25']
 
     steps:
@@ -120,7 +120,7 @@ jobs:
       matrix:
         # Smoke test the Java 25 target. Older (Java 21) servers need a per-version JDK to RUN
         # the forked server while building under JDK 25 — tracked as a follow-up (see header note).
-        paper-version: ['26.1.2']
+        paper-version: ['26.3']
         java-version: ['25']
 
     steps:
