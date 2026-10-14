@@ -52,6 +52,13 @@ class MigrationService(
         try {
             Logging.info("Starting migration: $from -> $to")
 
+            // Saves still waiting in the write-behind cache exist only in memory; persist them to
+            // the running backend first or the migration silently leaves them behind.
+            val flushed = storageService.flushDirtyEntries()
+            if (flushed > 0) {
+                Logging.info("Flushed $flushed pending saves before migrating")
+            }
+
             // Create source storage
             val sourceStorage = createStorage(from)
             sourceStorage.initialize()

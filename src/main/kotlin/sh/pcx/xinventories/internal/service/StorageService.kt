@@ -4,6 +4,7 @@ import sh.pcx.xinventories.PluginContext
 import sh.pcx.xinventories.api.model.StorageType
 import sh.pcx.xinventories.internal.cache.PlayerDataCache
 import sh.pcx.xinventories.internal.model.PlayerData
+import sh.pcx.xinventories.internal.config.StorageConfig
 import sh.pcx.xinventories.internal.storage.MySqlStorage
 import sh.pcx.xinventories.internal.storage.SqliteStorage
 import sh.pcx.xinventories.internal.storage.Storage
@@ -49,13 +50,11 @@ class StorageService(
         cache = PlayerDataCache(config.cache)
 
         // Initialize storage backend
-        storage = when (config.storage.type) {
-            StorageType.YAML -> YamlStorage(plugin)
-            StorageType.SQLITE -> SqliteStorage(plugin, config.storage.sqlite.file)
-            StorageType.MYSQL -> MySqlStorage(plugin, config.storage.mysql)
-        }
+        storage = createStorage(config.storage)
 
         storage.initialize()
+        activeBackend = backendKey(config.storage)
+        activeType = config.storage.type
 
         // Start write-behind job if caching is enabled
         if (config.cache.enabled && config.cache.writeBehindSeconds > 0) {
@@ -64,6 +63,69 @@ class StorageService(
 
         initialized = true
         Logging.info("Storage service initialized with ${config.storage.type} backend")
+    }
+
+    /** Identifies the configured backend: its type plus the settings that locate its data. */
+    private var activeBackend: Any? = null
+    private var activeType: StorageType = StorageType.YAML
+
+    private fun backendKey(config: StorageConfig): Any = when (config.type) {
+        StorageType.YAML -> StorageType.YAML
+        StorageType.SQLITE -> StorageType.SQLITE to config.sqlite
+        StorageType.MYSQL -> StorageType.MYSQL to config.mysql
+    }
+
+    private fun createStorage(config: StorageConfig): Storage = when (config.type) {
+        StorageType.YAML -> YamlStorage(plugin)
+        StorageType.SQLITE -> SqliteStorage(plugin, config.sqlite.file)
+        StorageType.MYSQL -> MySqlStorage(plugin, config.mysql)
+    }
+
+    /**
+     * Switches to the backend in the (reloaded) configuration when it differs from the running one,
+     * e.g. after `/xinv convert yaml sqlite` and changing `storage.type`. Pending cache writes are
+     * flushed to the old backend first and the cache is dropped, so later reads come from the new
+     * one. If the new backend cannot be initialized the running one is kept and the error rethrown.
+     *
+     * @return the previous backend type if a switch happened, null if nothing changed
+     */
+    suspend fun switchToConfiguredBackend(): StorageType? {
+        if (!initialized) return null
+        val config = plugin.configManager.mainConfig.storage
+        if (backendKey(config) == activeBackend) return null
+
+        val previous = storage
+        val previousType = activeType
+
+        writeBehindJob?.cancel()
+        writeBehindJob = null
+        try {
+            val pending = cache.getDirtyEntries().size
+            val flushed = flushDirtyEntries()
+            check(flushed >= pending) {
+                "only $flushed of $pending pending saves reached the $previousType backend; not switching"
+            }
+
+            val replacement = createStorage(config)
+            replacement.initialize()
+
+            storage = replacement
+            activeBackend = backendKey(config)
+            activeType = config.type
+            // A save that raced the flush above is newer than anything converted: keep it, in the
+            // new backend, before dropping the old backend's view.
+            flushDirtyEntries()
+            cache.clear()
+        } finally {
+            val cacheConfig = plugin.configManager.mainConfig.cache
+            if (cacheConfig.enabled && cacheConfig.writeBehindSeconds > 0) {
+                startWriteBehind()
+            }
+        }
+
+        previous.shutdown()
+        Logging.info("Storage backend switched from $previousType to ${config.type}")
+        return previousType
     }
 
     /**

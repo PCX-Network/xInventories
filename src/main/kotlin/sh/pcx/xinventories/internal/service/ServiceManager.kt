@@ -500,8 +500,8 @@ class ServiceManager(
         // Reload expiration service
         expirationService.reload()
 
-        // Note: Storage service doesn't support hot-reload
-        // (would need to restart plugin to change storage type)
+        // Storage backend changes are applied by ReloadCommand through
+        // StorageService.switchToConfiguredBackend() (suspending, off the main thread).
 
         Logging.info("Services reloaded")
     }
