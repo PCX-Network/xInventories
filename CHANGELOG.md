@@ -5,7 +5,7 @@ All notable changes to xInventories will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-## [Unreleased]
+## [1.2.1] - 2026-10-13
 
 ### Fixed
 - **Inventory editor could not accept or release items** - Every click in the admin's own inventory was cancelled while a menu was open, so the editor's documented "pick up / place" workflow never worked and items could only be deleted. GUIs can now declare editable slots: the editor (`/xinv gui editor <player> [group]`) holds the stored items in slots 0-35 and the admin moves them like in a chest (click, drag, split, shift-click in and out of their own inventory). Because items really leave the editor, every close saves, and an online target standing in that group gets the saved inventory applied immediately, so taking an item out can never duplicate it.

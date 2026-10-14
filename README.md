@@ -531,6 +531,14 @@ xInventories includes a comprehensive test suite to ensure reliability and preve
 - **Services** - GroupService, StorageService, InventoryService, BackupService, MigrationService
 - **API** - Public API methods, event handling, subscriptions
 
+## Releasing
+
+1. Bump `version` in `build.gradle`, turn the `[Unreleased]` section of `CHANGELOG.md` into `[x.y.z] - YYYY-MM-DD`, and refresh `spigot-resource.bbcode`.
+2. Commit, tag `vx.y.z` and push the tag. The Release workflow builds the jar and creates the GitHub release from that changelog section.
+3. Upload the jar to SpigotMC and paste `spigot-update-x.y.z.bbcode` as the update post.
+
+`spigot-resource.bbcode` is the SpigotMC resource page. SpigotMC runs XenForo 1.4, whose BBCode is limited: only `[B] [I] [U] [S] [COLOR] [SIZE] [FONT] [URL] [IMG] [LIST] [LIST=1] [*] [CODE] [QUOTE] [SPOILER] [CENTER] [LEFT] [RIGHT] [INDENT]` render. There are no tables, headings, `[ICODE]`, `[HR]` or Markdown, so section headings are centred coloured text, inline code is `[FONT=Courier New]`, and `[CODE]` blocks go inside `[SPOILER]`s rather than lists.
+
 ## FAQ
 
 **Q: Does this work with Spigot?**

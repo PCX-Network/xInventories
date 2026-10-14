@@ -1,0 +1,20 @@
+[B]xInventories 1.2.1[/B] - inventory editor that actually edits, menus locked down and proven
+
+[B]Fixed[/B]
+[LIST]
+[*][B]Inventory editor could not accept or release items.[/B] Every click in the admin's own inventory was cancelled while a menu was open, so the editor's "pick up / place" workflow never worked and items could only be deleted. The editor ([FONT=Courier New]/xinv gui editor <player> [group][/FONT]) now holds the stored items in slots 0-35 and you move them like in a chest: click, drag, split, shift-click in and out of your own inventory. Every close saves, and if the player is online in that group the edited inventory is applied to them immediately, so taking an item out moves it and never duplicates it.
+[*][B]Restriction hopper[/B] - dropping an item on the hopper in the item-restrictions menu works again.
+[/LIST]
+
+[B]Changed[/B]
+[LIST]
+[*]Menus still block every way of pulling a button or display item out (shift-click, hotbar and offhand swaps, drop, double-click collect, creative middle-click clone, drag). This is now covered by an end-to-end suite that drives each path with a real client against Paper 26.1.2.
+[/LIST]
+
+[B]Upgrading[/B]
+[LIST]
+[*]Drop-in replacement for 1.2.0. No config changes.
+[*]Admins: the editor's Cancel button is gone. Closing the editor saves; use [FONT=Courier New]/xinv version restore[/FONT] if you need to undo an edit.
+[/LIST]
+
+Full changelog: [URL='https://github.com/PCX-SH/xInventories/blob/main/CHANGELOG.md']CHANGELOG.md[/URL]

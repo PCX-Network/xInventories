@@ -61,6 +61,7 @@ Whether you're running a survival server with a creative world, a minigame netwo
 [*][B]Inventory Merge[/B] - Merge two groups' inventories with conflict resolution
 [*][B]Export/Import JSON[/B] - Export inventories for external tools or backup
 [*][B]20+ GUI Screens[/B] - Comprehensive admin interface for all features
+[*][B]Tested on a real server[/B] - Thousands of unit tests plus an end-to-end suite that joins bots to a real Paper server and checks inventory separation, commands, permissions and the GUIs
 [/LIST]
 
 [CENTER][SIZE=5][COLOR=#5e4fa2][B]━━━━━━━━━━ Requirements ━━━━━━━━━━[/B][/COLOR][/SIZE][/CENTER]
@@ -70,7 +71,9 @@ Whether you're running a survival server with a creative world, a minigame netwo
 [*][B]Java 21+[/B] (the jar targets Java 21; Minecraft 26.1+ servers require Java 25 per Mojang, and the same jar runs there too)
 [/LIST]
 
-[COLOR=#27ae60][B]New in v1.2.0:[/B] Paper 26.1.2 support (Mojang's new year-based versioning), plus a fix for a GUI bug where items could occasionally be moved out of a menu, and several inventory save/sync hardening fixes.[/COLOR]
+[COLOR=#27ae60][B]New in v1.2.1:[/B] The admin inventory editor now works like a chest: move items in and out of a player's stored inventory, every close saves, and an online player gets the edited inventory applied at once (no duplication possible). Every way of pulling a button out of a menu is covered by an end-to-end suite that drives real clients against Paper 26.1.2.[/COLOR]
+
+[COLOR=#27ae60][B]Since v1.2.0:[/B] Paper 26.1.2 support (Mojang's new year-based versioning), plus a fix for a GUI bug where items could occasionally be moved out of a menu, and several inventory save/sync hardening fixes.[/COLOR]
 
 [COLOR=#27ae60][B]Since v1.1.0:[/B] Full Spigot support! The plugin automatically downloads required libraries on Spigot servers.[/COLOR]
 
