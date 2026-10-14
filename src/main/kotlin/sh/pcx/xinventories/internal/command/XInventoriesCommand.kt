@@ -12,6 +12,7 @@ import org.bukkit.command.Command
 import org.bukkit.command.CommandExecutor
 import org.bukkit.command.CommandSender
 import org.bukkit.command.TabCompleter
+import org.bukkit.entity.Player
 
 /**
  * Main command executor for /xinventories (/xinv).
@@ -64,6 +65,12 @@ class XInventoriesCommand(
         // Check permission
         if (!sender.hasPermission(subcommand.permission)) {
             messages.send(sender, "no-permission")
+            return true
+        }
+
+        // Player-only subcommands cast the sender to Player, so reject console/command blocks here
+        if (subcommand.playerOnly && sender !is Player) {
+            messages.send(sender, "player-only")
             return true
         }
 

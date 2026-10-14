@@ -1,0 +1,24 @@
+# E2E test groups: the overworld and the end share "survival",
+# the nether has its own "nether" group so teleporting there swaps inventories.
+groups:
+  survival:
+    worlds:
+      - "world"
+      - "world_the_end"
+    patterns: []
+    priority: 10
+    settings:
+      separate-gamemode-inventories: true
+  nether:
+    worlds:
+      - "world_nether"
+    patterns: []
+    priority: 10
+    settings:
+      separate-gamemode-inventories: true
+
+default-group: survival
+
+global-settings:
+  notify-on-switch: true
+  switch-sound: null

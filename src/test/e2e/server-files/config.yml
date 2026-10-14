@@ -1,0 +1,6 @@
+# E2E test overrides; every key not listed falls back to the plugin's bundled defaults.
+storage:
+  type: yaml
+# No outbound telemetry from the throwaway test server.
+metrics: false
+config-version: 1

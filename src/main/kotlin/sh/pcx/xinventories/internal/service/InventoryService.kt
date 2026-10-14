@@ -403,7 +403,10 @@ class InventoryService(
         if (loadedData != null) {
             applyInventory(player, loadedData, toGroup.settings)
             activeSnapshots[player.uniqueId] = loadedData.toSnapshot()
-        } else if (toGroup.settings.clearOnJoin) {
+        } else if (config.features.saveOnWorldChange || toGroup.settings.clearOnJoin) {
+            // No saved data for the target group yet: start it empty. Keeping the current items
+            // would carry the old group's inventory (already saved above) into this group and
+            // duplicate it on the way back. Unlike join, a group switch always has a source group.
             clearPlayerInventory(player, toGroup.settings)
             activeSnapshots[player.uniqueId] = PlayerInventorySnapshot.empty(
                 player.uniqueId, player.name, toGroup.name, player.gameMode

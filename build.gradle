@@ -1,3 +1,5 @@
+import me.drownek.plugwright.local.LocalMode
+
 plugins {
     id 'org.jetbrains.kotlin.jvm' version '2.3.0'
     id 'org.jetbrains.kotlin.plugin.serialization' version '2.3.0'
@@ -8,6 +10,8 @@ plugins {
     id 'jacoco'
     // Static analysis with Detekt
     id 'io.gitlab.arturbosch.detekt' version '1.23.8'
+    // End-to-end tests against a real Paper server (src/test/e2e)
+    id 'io.github.drownek.plugwright' version '3.0.0'
 }
 
 group = 'sh.pcx'
@@ -264,6 +268,28 @@ build {
 
 runServer {
     minecraftVersion '26.1.2'
+}
+
+// ==================== Plugwright E2E Configuration ====================
+// End-to-end tests (src/test/e2e) run with mineflayer bots against a real Paper server.
+// Run: ./gradlew plugwrightTest
+
+plugwright {
+    testsDir.set(file('src/test/e2e'))
+    environments { envs ->
+        envs.create('local', LocalMode.INSTANCE) { spec ->
+            spec.minecraftVersion.set('26.1.2')
+            spec.acceptEula.set(true)
+            spec.port.set(25568)
+            spec.rconPort.set(25578)
+            spec.jvmArgs.set(['-Xmx2G'])
+            // Put world_nether in its own group so world changes swap inventories.
+            spec.writeFiles { files ->
+                files.file('plugins/xInventories/groups.yml', file('src/test/e2e/server-files/groups.yml'))
+                files.file('plugins/xInventories/config.yml', file('src/test/e2e/server-files/config.yml'))
+            }
+        }
+    }
 }
 
 test {

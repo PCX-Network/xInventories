@@ -506,6 +506,14 @@ xInventories includes a comprehensive test suite to ensure reliability and preve
 # build/reports/tests/test/index.html
 ```
 
+### End-to-end tests
+
+`src/test/e2e` holds a [plugwright](https://github.com/Drownek/plugwright) suite that starts a real Paper 26.1.2 server (port 25568) with the plugin and `src/test/e2e/server-files/*.yml`, connects mineflayer bots and checks per-world inventory separation, commands, permissions and the admin GUI. Needs JDK 25 and Node 22 + npm on `PATH`.
+
+```bash
+./gradlew plugwrightTest            # report: build/reports/plugwright/local.json
+```
+
 ### Test Framework
 
 - **JUnit 5** - Test framework
