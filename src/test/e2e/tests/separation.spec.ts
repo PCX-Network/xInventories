@@ -1,8 +1,9 @@
 import { describe, expect, sleep, test } from '@plugwright/runner';
+import { LOCAL_ONLY } from './support/environments.js';
 import { NETHER_GROUP, OVERWORLD_GROUP, spawnPos, toNether, toOverworld } from './support/worlds.js';
 
 // One bot walks through the whole chain: overworld items, nether items, back and forth.
-describe.serial('per-world inventory separation', () => {
+describe.serial('per-world inventory separation', LOCAL_ONLY, () => {
     let home = { x: 0.5, y: 80, z: 0.5 };
 
     test('items given in the overworld are in the inventory', async ({ player }) => {
@@ -48,7 +49,7 @@ describe.serial('per-world inventory separation', () => {
     });
 });
 
-test('worlds in the same group share one inventory', async ({ player, server }) => {
+test('worlds in the same group share one inventory', LOCAL_ONLY, async ({ player, server }) => {
     await sleep(1000);
     const home = spawnPos({ player });
     await player.giveItem('emerald', 2);

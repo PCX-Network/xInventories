@@ -1,0 +1,2 @@
+# MyWorlds 2.0.1: separate inventories per world (every world keeps its own unless merged).
+useWorldInventories: true

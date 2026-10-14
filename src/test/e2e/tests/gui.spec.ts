@@ -1,12 +1,13 @@
 import { expect, test } from '@plugwright/runner';
+import { LOCAL_ONLY } from './support/environments.js';
 
-test('non-op cannot open the admin GUI', async ({ player }) => {
+test('non-op cannot open the admin GUI', LOCAL_ONLY, async ({ player }) => {
     player.chat('/xinv gui');
     await expect(player).toHaveReceivedMessage("You don't have permission to do this.");
     await expect(player.gui({ title: 'xInventories Admin', timeout: 1500 })).rejects.toThrow();
 });
 
-test('op opens the admin GUI and navigates to the group list', async ({ player }) => {
+test('op opens the admin GUI and navigates to the group list', LOCAL_ONLY, async ({ player }) => {
     await player.makeOp();
     player.chat('/xinv gui');
     const main = await player.gui({ title: 'xInventories Admin' });

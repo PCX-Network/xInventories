@@ -517,7 +517,25 @@ Once the fork is pushed and tagged, JitPack serves it as `com.github.PCX-Network
 
 ### End-to-end tests
 
-`src/test/e2e` holds a [plugwright](https://github.com/Drownek/plugwright) suite that starts a real Paper 26.3 server (newest build; port 25568, RCON 25578) with the plugin and `src/test/e2e/server-files/*.yml`, connects mineflayer bots and checks per-world inventory separation, commands, permissions and the admin GUI. Needs JDK 25 and Node 22 + npm on `PATH`.
+`src/test/e2e` holds a [plugwright](https://github.com/Drownek/plugwright) suite that starts real Paper 26.3 servers (newest build) with the plugin, connects mineflayer bots and checks per-world inventory separation, commands, permissions, the admin GUI, storage conversion and the importers. Needs JDK 25 and Node 22 + npm on `PATH` (the convert spec reads the SQLite file with Node's built-in `node:sqlite`).
+
+`build.gradle` declares three LocalMode environments; `./gradlew plugwrightTest` runs all of them one after the other, each in its own run directory (`src/test/e2e/generated/<env>/run`, wiped on every run):
+
+| Environment | Ports (game / RCON) | Server | Specs |
+|---|---|---|---|
+| `local` | 25568 / 25578 | xInventories with `server-files/groups.yml` (survival = world + the end, nether = world_nether) and `server-files/config.yml` (YAML storage) | everything that is not an import, plus `convert.spec.ts` (YAML -> SQLite -> YAML, backend switched by editing `config.yml` and `/xinv reload`) and `import-detect-plain.spec.ts` (nothing to import on a plain server) |
+| `imports` | 25569 / 25579 | + Multiverse-Core 5.8.1 and Multiverse-Inventories 5.3.6 (downloaded; `server-files/imports/mvi-groups.yml`), and a PerWorldInventory data folder written by hand in the PerWorldInventory-kt 2.3.2 format (`server-files/imports/PerWorldInventory`) | `import-mvi.spec.ts`, `import-pwi.spec.ts`, `import-myworlds-files.spec.ts` |
+| `myworlds` | 25570 / 25580 | + BKCommonLib 2.0.5 build 2073 and MyWorlds 2.0.1 build 370 from ci.mg-dev.eu (`useWorldInventories: true`), and a Multiverse-Inventories data folder without the plugin (`server-files/myworlds`, files written by MVI 5.3.6) | `import-myworlds.spec.ts`, `import-mvi-files.spec.ts` |
+
+Specs pin themselves to their environment (`LOCAL_ONLY` from `tests/support/environments.ts`, or `{ environments: [...] }` on the `describe.serial` block); everything else shows up as skipped in the other environments' reports. In the import environments xInventories starts with a single group (`server-files/imports/xinv-groups-single.yml`) so it never swaps inventories while the source plugin does; each import spec switches to the survival + nether groups before importing and checks the result by loading the imported inventories into the players (`/xinv load <player> <group>`, or by joining). Spec files run in no fixed order within an environment, so every spec sets up the group layout it needs.
+
+```bash
+./gradlew plugwrightTest                               # all environments
+./gradlew plugwrightTest -Pplugwright.env=imports      # one environment
+./gradlew plugwrightTest -PtestFiles=convert           # one spec file (in every environment)
+```
+
+Reports: `build/reports/plugwright/<env>.json`; server log: `src/test/e2e/generated/<env>/run/logs/latest.log`.
 
 The published plugwright 3.0.0 bots only join servers up to Minecraft 26.1, so the suite uses the **PCX-Network plugwright fork** (`3.1.0-pcx.1`, branch `pcx/26.3`), whose runner is built on the PCX-Network forks of mineflayer, minecraft-protocol and minecraft-data (protocol 777). Neither part is published:
 
@@ -532,7 +550,7 @@ npm run install:packages && npm run build:packages
 (cd gradle-plugin && ./gradlew publishToMavenLocal)
 cd ../xInventories
 
-./gradlew plugwrightTest            # report: build/reports/plugwright/local.json
+./gradlew plugwrightTest            # reports: build/reports/plugwright/<env>.json
 ```
 
 CI cannot use the `file:` link: before an e2e job is added there, publish the fork's runner (`@plugwright/runner` 3.1.0-pcx.1) to an npm registry or vendor it into this repository, and point `package.json` at that.

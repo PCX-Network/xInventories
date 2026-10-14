@@ -1,0 +1,12 @@
+# PerWorldInventory-kt 2.3.2 worlds.yml (format of its bundled default)
+groups:
+  survival:
+    worlds:
+    - world
+    - world_the_end
+    default-gamemode: SURVIVAL
+    respawnWorld: world
+  nether:
+    worlds:
+    - world_nether
+    default-gamemode: SURVIVAL

@@ -1,0 +1,20 @@
+config-version: 1
+# Import environments start with ONE xInventories group covering every world, so xInventories
+# never swaps inventories while the source plugin (Multiverse-Inventories, MyWorlds) is the one
+# separating them. The import specs switch to ../groups.yml (survival + nether) before importing.
+groups:
+  staging:
+    worlds:
+      - "world"
+      - "world_nether"
+      - "world_the_end"
+    patterns: []
+    priority: 10
+    settings:
+      separate-gamemode-inventories: true
+
+default-group: staging
+
+global-settings:
+  notify-on-switch: true
+  switch-sound: null

@@ -311,6 +311,55 @@ plugwright {
                 files.file('plugins/xInventories/config.yml', file('src/test/e2e/server-files/config.yml'))
             }
         }
+        // Importers against real source plugins / their real on-disk formats. xInventories starts
+        // with a single group (server-files/imports/xinv-groups-single.yml) so it never swaps
+        // inventories while Multiverse-Inventories does; the specs switch to server-files/groups.yml.
+        envs.create('imports', LocalMode.INSTANCE) { spec ->
+            spec.minecraftVersion.set('26.3')
+            spec.acceptEula.set(true)
+            spec.port.set(25569)
+            spec.rconPort.set(25579)
+            spec.jvmArgs.set(['-Xmx2G'])
+            spec.downloadPlugins { dl ->
+                dl.url('https://github.com/Multiverse/Multiverse-Core/releases/download/5.8.1/multiverse-core-5.8.1.jar')
+                dl.url('https://github.com/Multiverse/Multiverse-Inventories/releases/download/5.3.6/multiverse-inventories-5.3.6.jar')
+            }
+            spec.writeFiles { files ->
+                files.file('plugins/xInventories/config.yml', file('src/test/e2e/server-files/config.yml'))
+                files.file('plugins/xInventories/groups.yml', file('src/test/e2e/server-files/imports/xinv-groups-single.yml'))
+                files.file('plugins/Multiverse-Inventories/groups.yml', file('src/test/e2e/server-files/imports/mvi-groups.yml'))
+                // PerWorldInventory cannot run on 26.x: its data folder, hand-written in the exact
+                // format PerWorldInventory-kt 2.3.2 writes, stands in for a server that removed it.
+                def pwi = file('src/test/e2e/server-files/imports/PerWorldInventory')
+                fileTree(pwi).each { f ->
+                    files.file("plugins/PerWorldInventory/${pwi.toPath().relativize(f.toPath()).toString().replace('\\', '/')}", f)
+                }
+            }
+        }
+        // Real MyWorlds 2.0.1 (+ BKCommonLib, both run on Paper 26.3) with per-world inventories, in
+        // its own server so it does not fight Multiverse-Inventories over the inventory. It also
+        // carries a Multiverse-Inventories data folder WITHOUT the plugin (server-files/myworlds,
+        // files written by MVI 5.3.6), the state a server is in after removing MVI.
+        envs.create('myworlds', LocalMode.INSTANCE) { spec ->
+            spec.minecraftVersion.set('26.3')
+            spec.acceptEula.set(true)
+            spec.port.set(25570)
+            spec.rconPort.set(25580)
+            spec.jvmArgs.set(['-Xmx2G'])
+            spec.downloadPlugins { dl ->
+                dl.url('https://ci.mg-dev.eu/job/BKCommonLib/2073/artifact/build/BKCommonLib-2.0.5-SNAPSHOT-2073.jar')
+                dl.url('https://ci.mg-dev.eu/job/MyWorlds/370/artifact/target/MyWorlds-2.0.1-370.jar')
+            }
+            spec.writeFiles { files ->
+                files.file('plugins/xInventories/config.yml', file('src/test/e2e/server-files/config.yml'))
+                files.file('plugins/xInventories/groups.yml', file('src/test/e2e/server-files/imports/xinv-groups-single.yml'))
+                files.file('plugins/My_Worlds/config.yml', file('src/test/e2e/server-files/myworlds/my-worlds-config.yml'))
+                def mvi = file('src/test/e2e/server-files/myworlds/Multiverse-Inventories')
+                fileTree(mvi).each { f ->
+                    files.file("plugins/Multiverse-Inventories/${mvi.toPath().relativize(f.toPath()).toString().replace('\\', '/')}", f)
+                }
+            }
+        }
     }
 }
 

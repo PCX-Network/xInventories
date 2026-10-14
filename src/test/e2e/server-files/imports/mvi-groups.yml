@@ -1,0 +1,22 @@
+# Multiverse-Inventories 5.x groups.yml: the overworld (+ end) and the nether keep separate
+# inventories, armor, off-hand, ender chests and stats.
+groups:
+  survival:
+    worlds:
+    - world
+    - world_the_end
+    shares:
+    - inventory_contents
+    - armor_contents
+    - off_hand
+    - ender_chest
+    - stats
+  nether:
+    worlds:
+    - world_nether
+    shares:
+    - inventory_contents
+    - armor_contents
+    - off_hand
+    - ender_chest
+    - stats

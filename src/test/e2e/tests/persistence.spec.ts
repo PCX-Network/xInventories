@@ -1,7 +1,8 @@
 import { describe, expect, sleep, test } from '@plugwright/runner';
+import { LOCAL_ONLY } from './support/environments.js';
 import { NETHER_GROUP, OVERWORLD_GROUP, spawnPos, toNether, toOverworld } from './support/worlds.js';
 
-test('/xinv save then /xinv load restores a cleared inventory', async ({ player, server }) => {
+test('/xinv save then /xinv load restores a cleared inventory', LOCAL_ONLY, async ({ player, server }) => {
     await sleep(1000);
     await player.makeOp();
     await player.giveItem('gold_ingot', 7);
@@ -19,13 +20,13 @@ test('/xinv save then /xinv load restores a cleared inventory', async ({ player,
     await expect(player).toContainItem('gold_ingot');
 });
 
-test('non-op cannot force a save', async ({ player }) => {
+test('non-op cannot force a save', LOCAL_ONLY, async ({ player }) => {
     player.chat('/xinv save');
     await expect(player).toHaveReceivedMessage("You don't have permission to do this.");
     await expect(player).not.toHaveReceivedMessage('Your inventory has been saved.', { timeout: 1500 });
 });
 
-describe.serial('group inventories survive a reconnect', () => {
+describe.serial('group inventories survive a reconnect', LOCAL_ONLY, () => {
     let home = { x: 0.5, y: 80, z: 0.5 };
 
     test('fill overworld and nether inventories', async ({ player, server }) => {
