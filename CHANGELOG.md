@@ -14,6 +14,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Changed
 - **Paper 26.3 support.** The main source set stays compiled against `paper-api 26.1.2` on purpose: Paper 26.3 ships Adventure 5, and a jar compiled against it throws `NoSuchMethodError` on 26.1/26.2 servers (`TextComponent.Builder.build()`), while Adventure 5 keeps the Adventure-4 descriptors as bridges. Tests run on the 26.3 API. Still Java 21 bytecode, runs on 1.20.5 - 26.3.
 - Menus still block every way of pulling a button or display item out (shift-click, hotbar and offhand swaps, drop, double-click collect, creative middle-click clone, drag); this is now covered by an end-to-end suite that drives each path with a real client.
+- **Unit tests on MockBukkit 26.3.** The suite runs on `mockbukkit-v26.3:4.118.0-pcx.1`, the PCX-Network fork of MockBukkit for Paper 26.3 (build 181), instead of `mockbukkit-v26.2:4.117.0`, which no longer matched the 26.3 API (647 of 3679 tests failed). All 3880 tests pass (40 skipped, unchanged). JaCoCo 0.8.15, since 0.8.12 cannot instrument Java 25 class files.
+- **End-to-end tests on Paper 26.3.** The plugwright suite (36 tests) runs on Paper 26.3 instead of 26.1.2, through the PCX-Network plugwright fork 3.1.0-pcx.1, whose bots speak the 26.3 protocol. Both forks resolve locally for now (`mavenLocal()` and a `file:` link to the runner); see "Running Tests" in the README.
 
 ## [1.2.0] - 2026-06-18
 

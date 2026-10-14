@@ -10,8 +10,9 @@ plugins {
     id 'jacoco'
     // Static analysis with Detekt
     id 'io.gitlab.arturbosch.detekt' version '1.23.8'
-    // End-to-end tests against a real Paper server (src/test/e2e)
-    id 'io.github.drownek.plugwright' version '3.0.0'
+    // End-to-end tests against a real Paper server (src/test/e2e). 3.1.0-pcx.1 is the PCX-Network
+    // fork that runs the bots on Minecraft 26.2/26.3; it comes from mavenLocal (see settings.gradle).
+    id 'io.github.drownek.plugwright' version '3.1.0-pcx.1'
 }
 
 group = 'sh.pcx'
@@ -296,9 +297,10 @@ plugwright {
     testsDir.set(file('src/test/e2e'))
     environments { envs ->
         envs.create('local', LocalMode.INSTANCE) { spec ->
-            // Newest Paper the mineflayer bots can join (minecraft-data stops at 26.1); the
-            // plugin itself is compiled against the latest Paper API (see dependencies).
-            spec.minecraftVersion.set('26.1.2')
+            // Newest Paper: the PCX-Network plugwright fork's runner (src/test/e2e/package.json) joins
+            // 26.3 servers (protocol 777) through the PCX-Network mineflayer/minecraft-protocol/
+            // minecraft-data forks. The plugin itself is compiled against 26.1.2 (see dependencies).
+            spec.minecraftVersion.set('26.3')
             spec.acceptEula.set(true)
             spec.port.set(25568)
             spec.rconPort.set(25578)
