@@ -57,6 +57,13 @@ ext {
 
 repositories {
     mavenCentral()
+    // MockBukkit 26.3 is not released upstream yet: the tests use the PCX-Network fork
+    // (github.com/PCX-Network/MockBukkit, branch minecraft/v26.3), installed locally with
+    // `./gradlew publishToMavenLocal` in the fork. Restricted to that group so nothing else
+    // resolves from ~/.m2.
+    mavenLocal {
+        content { includeGroup 'org.mockbukkit.mockbukkit' }
+    }
     maven { url = 'https://repo.papermc.io/repository/maven-public/' }
     maven { url = 'https://repo.extendedclip.com/content/repositories/placeholderapi/' }
     maven { url = 'https://jitpack.io' }
@@ -131,8 +138,11 @@ dependencies {
     testImplementation "redis.clients:jedis:${jedisVersion}"
     // Tests run against the NEWEST Paper API (what MockBukkit 26.x targets); main stays on 26.1.2, see above.
     testImplementation 'io.papermc.paper:paper-api:26.3.build.181-stable'
-    // Newest MockBukkit line available (there is no mockbukkit-v26.3 yet).
-    testImplementation('org.mockbukkit.mockbukkit:mockbukkit-v26.2:4.117.0') {
+    // MockBukkit for Minecraft 26.3 from the PCX-Network fork (upstream has no mockbukkit-v26.3
+    // release yet), resolved from mavenLocal (see repositories). For CI, once the fork is pushed and
+    // tagged, switch to the JitPack coordinates (the jitpack.io repository is already listed):
+    //   testImplementation('com.github.PCX-Network.MockBukkit:mockbukkit-v26.3:<tag>')
+    testImplementation('org.mockbukkit.mockbukkit:mockbukkit-v26.3:4.118.0-pcx.1') {
         exclude group: 'org.jetbrains.kotlin'
         exclude group: 'org.jetbrains.kotlinx'
     }
@@ -338,7 +348,8 @@ tasks.dokkaHtml.configure {
 // Code coverage reporting for test suite
 
 jacoco {
-    toolVersion = "0.8.12"
+    // 0.8.13+ is needed to instrument Java 25 class files (major version 69).
+    toolVersion = "0.8.15"
 }
 
 jacocoTestReport {
