@@ -495,14 +495,14 @@ xInventories includes a comprehensive test suite to ensure reliability and preve
 
 > **Note:** Building/testing from source requires **JDK 25** (paper-api 26.1.2 is compiled against Java 25). The produced jar is Java 21 bytecode and still runs on Java 21 servers.
 
-The unit tests run on the Paper 26.3 API with **MockBukkit for 26.3 from the PCX-Network fork** (`org.mockbukkit.mockbukkit:mockbukkit-v26.3:4.118.0-pcx.1`; upstream MockBukkit has no 26.3 release yet). It resolves from `mavenLocal()`, so install it once before the first build:
+The unit tests run on the Paper 26.3 API with **MockBukkit for 26.3 from the pcxgg fork** (`org.mockbukkit.mockbukkit:mockbukkit-v26.3:4.118.0-pcx.1`; upstream MockBukkit has no 26.3 release yet). It resolves from `mavenLocal()`, so install it once before the first build:
 
 ```bash
-git clone -b minecraft/v26.3 https://github.com/PCX-Network/MockBukkit.git
+git clone -b minecraft/v26.3 https://github.com/pcxgg/MockBukkit.git
 (cd MockBukkit && ./gradlew publishToMavenLocal)
 ```
 
-Once the fork is pushed and tagged, JitPack serves it as `com.github.PCX-Network.MockBukkit:mockbukkit-v26.3:<tag>` (see the comment in `build.gradle`).
+Once the fork is pushed and tagged, JitPack serves it as `com.github.pcxgg.MockBukkit:mockbukkit-v26.3:<tag>` (see the comment in `build.gradle`).
 
 ```bash
 # Run all tests
@@ -537,14 +537,14 @@ Specs pin themselves to their environment (`LOCAL_ONLY` from `tests/support/envi
 
 Reports: `build/reports/plugwright/<env>.json`; server log: `src/test/e2e/generated/<env>/run/logs/latest.log`.
 
-The published plugwright 3.0.0 bots only join servers up to Minecraft 26.1, so the suite uses the **PCX-Network plugwright fork** (`3.1.0-pcx.1`, branch `pcx/26.3`), whose runner is built on the PCX-Network forks of mineflayer, minecraft-protocol and minecraft-data (protocol 777). Neither part is published:
+The published plugwright 3.0.0 bots only join servers up to Minecraft 26.1, so the suite uses the **pcxgg plugwright fork** (`3.1.0-pcx.1`, branch `pcx/26.3`), whose runner is built on the pcxgg forks of mineflayer, minecraft-protocol and minecraft-data (protocol 777). Neither part is published:
 
 - the Gradle plugin comes from `mavenLocal()` (listed in `settings.gradle`);
 - `src/test/e2e/package.json` links the runner by path: `file:../../../../plugwright/runner-package`, i.e. a `plugwright` checkout next to this repository.
 
 ```bash
-# once, next to this repository (see the fork's README, "PCX-Network fork")
-git clone -b pcx/26.3 https://github.com/PCX-Network/plugwright.git
+# once, next to this repository (see the fork's README, "pcxgg fork")
+git clone -b pcx/26.3 https://github.com/pcxgg/plugwright.git
 cd plugwright
 npm run install:packages && npm run build:packages
 (cd gradle-plugin && ./gradlew publishToMavenLocal)
@@ -553,14 +553,14 @@ cd ../xInventories
 ./gradlew plugwrightTest            # reports: build/reports/plugwright/<env>.json
 ```
 
-CI cannot use the `file:` link: before an e2e job is added there, publish the fork's runner (`@plugwright/runner` 3.1.0-pcx.1) to an npm registry or vendor it into this repository, and point `package.json` at that.
+In CI, every job runs `.github/actions/bootstrap-forks` before its first Gradle step: it clones `pcxgg/plugwright` (and, for jobs that run the unit tests, `pcxgg/MockBukkit`) at pinned commits, publishes them to Maven local and caches the result per commit. Bump the `plugwright-ref` / `mockbukkit-ref` defaults in that action after changing a fork. CI cannot use the `file:` link for the runner: before an e2e job is added there, publish the fork's runner (`@plugwright/runner` 3.1.0-pcx.1) to an npm registry or vendor it into this repository, and point `package.json` at that.
 
 ### Test Framework
 
 - **JUnit 5** - Test framework
 - **MockK** - Kotlin mocking library
-- **MockBukkit** - Bukkit API mocking for Paper (26.3, PCX-Network fork)
-- **plugwright** - End-to-end tests with mineflayer bots on a real Paper 26.3 server (PCX-Network fork)
+- **MockBukkit** - Bukkit API mocking for Paper (26.3, pcxgg fork)
+- **plugwright** - End-to-end tests with mineflayer bots on a real Paper 26.3 server (pcxgg fork)
 - **kotlinx-coroutines-test** - Coroutine testing utilities
 
 ### Test Categories

@@ -12,7 +12,7 @@
 #
 # Testing approach:
 # 1. Build the plugin with Gradle (JDK 25)
-# 2. Run unit tests (MockBukkit v26.3, PCX-Network fork 4.118.0-pcx.1; see the fork note below)
+# 2. Run unit tests (MockBukkit v26.3, pcxgg fork 4.118.0-pcx.1; see the fork note below)
 # 3. Use run-paper for smoke tests (start server, verify plugin loads)
 #
 # Note: smoke-testing OLDER (Java 21) Paper servers requires running the server under JDK 21 while
@@ -21,15 +21,10 @@
 #
 # Trigger: on PR to main (not every push to avoid excessive CI runs)
 #
-# PCX-Network forks: every Gradle invocation resolves the plugwright Gradle plugin 3.1.0-pcx.1
-# (settings.gradle, via mavenLocal) and test tasks also resolve MockBukkit
-# org.mockbukkit.mockbukkit:mockbukkit-v26.3:4.118.0-pcx.1 (build.gradle, via mavenLocal). Neither is
-# published yet, so this job fails on a clean runner until either (a) both are published (MockBukkit:
-# push and tag the fork, then use the JitPack coordinates
-# com.github.PCX-Network.MockBukkit:mockbukkit-v26.3:<tag>; plugwright: publish the Gradle plugin to a
-# repository listed in settings.gradle pluginManagement), or (b) a step before Gradle checks out
-# PCX-Network/plugwright (branch pcx/26.3; `cd gradle-plugin && ./gradlew publishToMavenLocal`) and
-# PCX-Network/MockBukkit (branch minecraft/v26.3; `./gradlew publishToMavenLocal`).
+# pcxgg forks: the Gradle build resolves the plugwright Gradle plugin 3.1.0-pcx.1 and MockBukkit
+# mockbukkit-v26.3:4.118.0-pcx.1 from mavenLocal (neither is published), so every job runs
+# .github/actions/bootstrap-forks, which builds pcxgg/plugwright (and pcxgg/MockBukkit where the
+# job needs it) before its first Gradle step.
 
 name: Multi-Version Paper Testing
 
@@ -58,6 +53,11 @@ jobs:
       - name: Setup Gradle
         uses: gradle/actions/setup-gradle@v5
 
+      - name: Bootstrap pcxgg forks
+        uses: ./.github/actions/bootstrap-forks
+        with:
+          mockbukkit-ref: ''
+
       - name: Grant execute permission for gradlew
         run: chmod +x gradlew
 
@@ -72,7 +72,7 @@ jobs:
           retention-days: 1
 
   # Matrix test job - runs unit tests
-  # The unit tests always run on MockBukkit v26.3 (PCX-Network fork) and paper-api 26.3; the matrix
+  # The unit tests always run on MockBukkit v26.3 (pcxgg fork) and paper-api 26.3; the matrix
   # value only labels the job, it does not change the API under test.
   unit-tests:
     name: Unit Tests (Paper ${{ matrix.paper-version }})
@@ -98,6 +98,9 @@ jobs:
 
       - name: Setup Gradle
         uses: gradle/actions/setup-gradle@v5
+
+      - name: Bootstrap pcxgg forks
+        uses: ./.github/actions/bootstrap-forks
 
       - name: Grant execute permission for gradlew
         run: chmod +x gradlew
@@ -144,6 +147,11 @@ jobs:
 
       - name: Setup Gradle
         uses: gradle/actions/setup-gradle@v5
+
+      - name: Bootstrap pcxgg forks
+        uses: ./.github/actions/bootstrap-forks
+        with:
+          mockbukkit-ref: ''
 
       - name: Grant execute permission for gradlew
         run: chmod +x gradlew

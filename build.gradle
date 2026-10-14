@@ -10,7 +10,7 @@ plugins {
     id 'jacoco'
     // Static analysis with Detekt
     id 'io.gitlab.arturbosch.detekt' version '1.23.8'
-    // End-to-end tests against a real Paper server (src/test/e2e). 3.1.0-pcx.1 is the PCX-Network
+    // End-to-end tests against a real Paper server (src/test/e2e). 3.1.0-pcx.1 is the pcxgg
     // fork that runs the bots on Minecraft 26.2/26.3; it comes from mavenLocal (see settings.gradle).
     id 'io.github.drownek.plugwright' version '3.1.0-pcx.1'
 }
@@ -58,8 +58,8 @@ ext {
 
 repositories {
     mavenCentral()
-    // MockBukkit 26.3 is not released upstream yet: the tests use the PCX-Network fork
-    // (github.com/PCX-Network/MockBukkit, branch minecraft/v26.3), installed locally with
+    // MockBukkit 26.3 is not released upstream yet: the tests use the pcxgg fork
+    // (github.com/pcxgg/MockBukkit, branch minecraft/v26.3), installed locally with
     // `./gradlew publishToMavenLocal` in the fork. Restricted to that group so nothing else
     // resolves from ~/.m2.
     mavenLocal {
@@ -139,10 +139,10 @@ dependencies {
     testImplementation "redis.clients:jedis:${jedisVersion}"
     // Tests run against the NEWEST Paper API (what MockBukkit 26.x targets); main stays on 26.1.2, see above.
     testImplementation 'io.papermc.paper:paper-api:26.3.build.181-stable'
-    // MockBukkit for Minecraft 26.3 from the PCX-Network fork (upstream has no mockbukkit-v26.3
+    // MockBukkit for Minecraft 26.3 from the pcxgg fork (upstream has no mockbukkit-v26.3
     // release yet), resolved from mavenLocal (see repositories). For CI, once the fork is pushed and
     // tagged, switch to the JitPack coordinates (the jitpack.io repository is already listed):
-    //   testImplementation('com.github.PCX-Network.MockBukkit:mockbukkit-v26.3:<tag>')
+    //   testImplementation('com.github.pcxgg.MockBukkit:mockbukkit-v26.3:<tag>')
     testImplementation('org.mockbukkit.mockbukkit:mockbukkit-v26.3:4.118.0-pcx.1') {
         exclude group: 'org.jetbrains.kotlin'
         exclude group: 'org.jetbrains.kotlinx'
@@ -297,8 +297,8 @@ plugwright {
     testsDir.set(file('src/test/e2e'))
     environments { envs ->
         envs.create('local', LocalMode.INSTANCE) { spec ->
-            // Newest Paper: the PCX-Network plugwright fork's runner (src/test/e2e/package.json) joins
-            // 26.3 servers (protocol 777) through the PCX-Network mineflayer/minecraft-protocol/
+            // Newest Paper: the pcxgg plugwright fork's runner (src/test/e2e/package.json) joins
+            // 26.3 servers (protocol 777) through the pcxgg mineflayer/minecraft-protocol/
             // minecraft-data forks. The plugin itself is compiled against 26.1.2 (see dependencies).
             spec.minecraftVersion.set('26.3')
             spec.acceptEula.set(true)

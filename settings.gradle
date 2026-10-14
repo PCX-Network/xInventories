@@ -2,7 +2,7 @@ pluginManagement {
     repositories {
         gradlePluginPortal()
         mavenCentral()
-        // plugwright 3.1.0-pcx.1 (PCX-Network fork, branch pcx/26.3) is not on the plugin portal:
+        // plugwright 3.1.0-pcx.1 (pcxgg fork, branch pcx/26.3) is not on the plugin portal:
         // `cd gradle-plugin && ./gradlew publishToMavenLocal` in the fork installs it.
         mavenLocal()
     }
