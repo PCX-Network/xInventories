@@ -1,97 +1,64 @@
 package sh.pcx.xinventories.internal.import
 
+import com.google.gson.JsonArray
+import com.google.gson.JsonElement
+import com.google.gson.JsonObject
+import com.google.gson.JsonParser
+import com.google.gson.JsonPrimitive
 import sh.pcx.xinventories.PluginContext
 import sh.pcx.xinventories.internal.model.*
 import sh.pcx.xinventories.internal.util.Logging
-import org.bukkit.Bukkit
 import org.bukkit.GameMode
 import org.bukkit.Material
 import org.bukkit.configuration.file.YamlConfiguration
+import org.bukkit.configuration.serialization.ConfigurationSerialization
 import org.bukkit.inventory.ItemStack
 import org.bukkit.potion.PotionEffect
-import sh.pcx.xinventories.internal.compat.PotionEffectCompat
+import org.bukkit.util.io.BukkitObjectInputStream
+import java.io.ByteArrayInputStream
 import java.io.File
 import java.time.Instant
+import java.util.Base64
 import java.util.UUID
 
 /**
- * Import source for PerWorldInventory-kt (PWI).
- * Supports both API access when the plugin is loaded and file-based import.
+ * Import source for PerWorldInventory (PerWorldInventory-kt 2.x by EbonJaeger, and the Java 1.x
+ * plugin by Gnat008 it replaced).
  *
- * Repository: https://github.com/EbonJaeger/perworldinventory-kt
- * Note: PWI is archived as of Dec 2021 but API is still functional.
+ * Repository: https://github.com/EbonJaeger/perworldinventory-kt (archived; 2.3.2 is the last release).
+ * PWI does not run on current servers and has no profile API, so this source always reads PWI's
+ * files, which is also what a server that already removed PWI has left:
+ *
+ * - `plugins/PerWorldInventory/worlds.yml`: `groups.<name>.worlds` (+ `default-gamemode`, `respawnWorld`)
+ * - `plugins/PerWorldInventory/data/<uuid>/<group>.json` for survival and
+ *   `<group>_creative.json` / `<group>_adventure.json` / `<group>_spectator.json` for the other game
+ *   modes (only when `separate-gamemode-inventories` is on; otherwise the survival file is used for all).
+ *
+ * File formats (FlatFile + PlayerProfile / PlayerSerializer):
+ * - data-format 4 (2.2+): ConfigurationSerialization of PlayerProfile: `"=="`, `data-format`,
+ *   `inventory.contents[]` / `inventory.armor[]` / `ender-chest[]` as `{index, item}` with the item a
+ *   serialized ItemStack map, `stats{...}`, `potion-effects[]` and `balance`.
+ * - data-format 1-3 (PWI 1.x / early 2.x): `inventory.inventory[]` / `inventory.armor[]` /
+ *   `ender-chest[]`, items as Base64 BukkitObjectOutputStream strings (1, 2) or ItemStack maps (3),
+ *   `stats{...}` with `potion-effects[]` inside and `economy.balance`.
  */
 class PwiImportSource(private val plugin: PluginContext) : ImportSource {
 
     override val name: String = "PerWorldInventory"
     override val id: String = "pwi"
 
-    private val dataFolder: File = File(plugin.plugin.dataFolder.parentFile, "PerWorldInventory/data")
     private val configFolder: File = File(plugin.plugin.dataFolder.parentFile, "PerWorldInventory")
+    private val dataFolder: File = File(configFolder, "data")
     private val worldsFile: File = File(configFolder, "worlds.yml")
+    private val configFile: File = File(configFolder, "config.yml")
 
     override val isAvailable: Boolean
         get() = dataFolder.exists() && dataFolder.isDirectory
 
-    override val hasApiAccess: Boolean
-        get() {
-            return try {
-                val pwiPlugin = Bukkit.getPluginManager().getPlugin("PerWorldInventory")
-                pwiPlugin != null && pwiPlugin.isEnabled
-            } catch (e: Exception) {
-                false
-            }
-        }
+    /** PWI exposes no profile API (and cannot load on current servers): always file-based. */
+    override val hasApiAccess: Boolean = false
 
     override fun getGroups(): List<ImportGroup> {
-        if (hasApiAccess) {
-            return getGroupsFromApi()
-        }
-        return getGroupsFromFiles()
-    }
-
-    private fun getGroupsFromApi(): List<ImportGroup> {
-        return try {
-            // Use reflection to avoid compile-time dependency
-            val pwiPlugin = Bukkit.getPluginManager().getPlugin("PerWorldInventory") ?: return emptyList()
-            val apiMethod = pwiPlugin.javaClass.getMethod("getPerWorldInventoryAPI")
-            val api = apiMethod.invoke(pwiPlugin) ?: return emptyList()
-
-            val groups = mutableListOf<ImportGroup>()
-
-            // Get all worlds and their groups
-            val worldManager = api.javaClass.getMethod("getGroupManager").invoke(api)
-            val getGroupsMethod = worldManager.javaClass.getMethod("getGroups")
-            @Suppress("UNCHECKED_CAST")
-            val pwiGroups = getGroupsMethod.invoke(worldManager) as? Map<String, Any> ?: return emptyList()
-
-            pwiGroups.forEach { (name, groupObj) ->
-                try {
-                    val getWorldsMethod = groupObj.javaClass.getMethod("getWorlds")
-                    @Suppress("UNCHECKED_CAST")
-                    val worlds = getWorldsMethod.invoke(groupObj) as? Set<String> ?: emptySet()
-
-                    val isDefaultMethod = groupObj.javaClass.getMethod("isDefault")
-                    val isDefault = isDefaultMethod.invoke(groupObj) as? Boolean ?: false
-
-                    groups.add(ImportGroup(
-                        name = name,
-                        worlds = worlds,
-                        isDefault = isDefault
-                    ))
-                } catch (e: Exception) {
-                    Logging.warning("Failed to parse PWI group $name: ${e.message}")
-                }
-            }
-
-            groups
-        } catch (e: Exception) {
-            Logging.warning("Failed to get groups from PWI API, falling back to files: ${e.message}")
-            getGroupsFromFiles()
-        }
-    }
-
-    private fun getGroupsFromFiles(): List<ImportGroup> {
         if (!worldsFile.exists()) {
             Logging.warning("PWI worlds.yml not found at ${worldsFile.absolutePath}")
             return emptyList()
@@ -106,13 +73,10 @@ class PwiImportSource(private val plugin: PluginContext) : ImportSource {
             groupsSection.getKeys(false).forEach { groupName ->
                 val groupSection = groupsSection.getConfigurationSection(groupName) ?: return@forEach
 
-                val worlds = groupSection.getStringList("worlds").toSet()
-                val isDefault = groupSection.getBoolean("default", false)
-
                 groups.add(ImportGroup(
                     name = groupName,
-                    worlds = worlds,
-                    isDefault = isDefault
+                    worlds = groupSection.getStringList("worlds").toSet(),
+                    isDefault = groupName.equals("default", ignoreCase = true)
                 ))
             }
         } catch (e: Exception) {
@@ -122,258 +86,189 @@ class PwiImportSource(private val plugin: PluginContext) : ImportSource {
         return groups
     }
 
-    override fun getPlayers(): List<UUID> {
-        if (!dataFolder.exists()) return emptyList()
-
-        val players = mutableSetOf<UUID>()
-
-        // PWI stores data in: data/<group>/<uuid>.yml
-        dataFolder.listFiles()?.filter { it.isDirectory }?.forEach { groupDir ->
-            groupDir.listFiles()?.filter { it.extension == "yml" }?.forEach { playerFile ->
-                try {
-                    val uuidString = playerFile.nameWithoutExtension
-                    val uuid = UUID.fromString(uuidString)
-                    players.add(uuid)
-                } catch (e: Exception) {
-                    // Not a valid UUID file
-                }
+    /** Player folders: data/<uuid>/ holding at least one group profile. */
+    private fun playerFolders(): List<Pair<UUID, File>> {
+        return dataFolder.listFiles { f -> f.isDirectory }?.mapNotNull { dir ->
+            val uuid = try {
+                UUID.fromString(dir.name)
+            } catch (e: IllegalArgumentException) {
+                return@mapNotNull null
             }
-        }
+            if (profileFiles(dir).isEmpty()) null else uuid to dir
+        } ?: emptyList()
+    }
 
-        return players.toList()
+    private fun profileFiles(dir: File): List<File> =
+        dir.listFiles { f -> f.isFile && f.extension == "json" && f.name !in NON_PROFILE_FILES }?.toList() ?: emptyList()
+
+    override fun getPlayers(): List<UUID> = playerFolders().map { it.first }
+
+    private fun separateGameModes(): Boolean =
+        !configFile.exists() || YamlConfiguration.loadConfiguration(configFile).getBoolean("separate-gamemode-inventories", true)
+
+    private fun profileFile(uuid: UUID, group: String, gameMode: GameMode): File? {
+        val dir = File(dataFolder, uuid.toString())
+        if (!dir.isDirectory) return null
+        val effectiveMode = if (separateGameModes()) gameMode else GameMode.SURVIVAL
+        val fileName = when (effectiveMode) {
+            GameMode.SURVIVAL -> "$group.json"
+            else -> "${group}_${effectiveMode.name.lowercase()}.json"
+        }
+        // PWI writes the group name as configured; match case-insensitively for safety.
+        return File(dir, fileName).takeIf { it.exists() }
+            ?: dir.listFiles()?.firstOrNull { it.name.equals(fileName, ignoreCase = true) }
     }
 
     override fun getPlayerData(uuid: UUID, group: String, gameMode: GameMode?): ImportedPlayerData? {
-        if (hasApiAccess) {
-            return getPlayerDataFromApi(uuid, group, gameMode)
-        }
-        return getPlayerDataFromFiles(uuid, group, gameMode)
-    }
-
-    private fun getPlayerDataFromApi(uuid: UUID, group: String, gameMode: GameMode?): ImportedPlayerData? {
-        return try {
-            // Use reflection to access PWI API
-            val pwiPlugin = Bukkit.getPluginManager().getPlugin("PerWorldInventory") ?: return null
-            val apiMethod = pwiPlugin.javaClass.getMethod("getPerWorldInventoryAPI")
-            val api = apiMethod.invoke(pwiPlugin) ?: return null
-
-            val player = Bukkit.getOfflinePlayer(uuid)
-            val targetGameMode = gameMode ?: GameMode.SURVIVAL
-
-            // Get profile manager
-            val profileManager = api.javaClass.getMethod("getProfileManager").invoke(api)
-            val getProfileMethod = profileManager.javaClass.methods.find {
-                it.name == "getPlayerProfile" && it.parameterCount == 3
-            } ?: return null
-
-            // Get the group object
-            val groupManager = api.javaClass.getMethod("getGroupManager").invoke(api)
-            val getGroupMethod = groupManager.javaClass.getMethod("getGroup", String::class.java)
-            val groupObj = getGroupMethod.invoke(groupManager, group) ?: return null
-
-            // Get profile
-            val profile = getProfileMethod.invoke(profileManager, player, groupObj, targetGameMode) ?: return null
-
-            // Extract data from profile
-            parseProfileObject(uuid, player.name ?: uuid.toString(), group, profile, targetGameMode)
-        } catch (e: Exception) {
-            Logging.debug { "Failed to get player data from PWI API: ${e.message}" }
-            null
-        }
-    }
-
-    private fun parseProfileObject(
-        uuid: UUID,
-        playerName: String,
-        group: String,
-        profile: Any,
-        gameMode: GameMode
-    ): ImportedPlayerData? {
-        return try {
-            val profileClass = profile.javaClass
-
-            // Get inventory
-            @Suppress("UNCHECKED_CAST")
-            val inventory = profileClass.getMethod("getInventory").invoke(profile) as? Array<ItemStack?>
-            val mainInventory = mutableMapOf<Int, ItemStack>()
-            inventory?.forEachIndexed { index, item ->
-                if (item != null && item.type != Material.AIR) {
-                    mainInventory[index] = item.clone()
-                }
-            }
-
-            // Get armor
-            @Suppress("UNCHECKED_CAST")
-            val armor = profileClass.getMethod("getArmor").invoke(profile) as? Array<ItemStack?>
-            val armorInventory = mutableMapOf<Int, ItemStack>()
-            armor?.forEachIndexed { index, item ->
-                if (item != null && item.type != Material.AIR) {
-                    armorInventory[index] = item.clone()
-                }
-            }
-
-            // Get other stats
-            val health = profileClass.getMethod("getHealth").invoke(profile) as? Double ?: 20.0
-            val foodLevel = profileClass.getMethod("getFoodLevel").invoke(profile) as? Int ?: 20
-            val exp = profileClass.getMethod("getExperience").invoke(profile) as? Float ?: 0.0f
-            val level = profileClass.getMethod("getLevel").invoke(profile) as? Int ?: 0
-            val balance = try {
-                profileClass.getMethod("getBalance").invoke(profile) as? Double
-            } catch (e: Exception) {
-                null
-            }
-
-            ImportedPlayerData(
-                uuid = uuid,
-                playerName = playerName,
-                sourceGroup = group,
-                gameMode = gameMode,
-                mainInventory = mainInventory,
-                armorInventory = armorInventory,
-                offhand = null, // PWI may not have separate offhand
-                enderChest = emptyMap(),
-                health = health,
-                maxHealth = 20.0,
-                foodLevel = foodLevel,
-                saturation = 5.0f,
-                exhaustion = 0.0f,
-                experience = exp,
-                level = level,
-                totalExperience = 0,
-                potionEffects = emptyList(),
-                balance = balance,
-                sourceTimestamp = null,
-                sourceId = id
-            )
-        } catch (e: Exception) {
-            Logging.debug { "Failed to parse PWI profile object: ${e.message}" }
-            null
-        }
-    }
-
-    private fun getPlayerDataFromFiles(uuid: UUID, group: String, gameMode: GameMode?): ImportedPlayerData? {
         val targetGameMode = gameMode ?: GameMode.SURVIVAL
-        val gameModeSuffix = targetGameMode.name.lowercase()
-
-        // PWI file structure: data/<group>/<uuid>.yml
-        // Inside the file, data is separated by game mode
-        val playerFile = File(dataFolder, "$group/$uuid.yml")
-
-        if (!playerFile.exists()) {
-            return null
-        }
+        val file = profileFile(uuid, group, targetGameMode) ?: return null
 
         return try {
-            val yaml = YamlConfiguration.loadConfiguration(playerFile)
-            val section = yaml.getConfigurationSection(gameModeSuffix) ?: return null
-
-            // Parse inventory
-            val mainInventory = mutableMapOf<Int, ItemStack>()
-            section.getConfigurationSection("inventory")?.let { invSection ->
-                invSection.getKeys(false).forEach { slotStr ->
-                    try {
-                        val slot = slotStr.toInt()
-                        val item = invSection.getItemStack(slotStr)
-                        if (item != null && item.type != Material.AIR) {
-                            mainInventory[slot] = item
-                        }
-                    } catch (e: Exception) {
-                        // Invalid slot
-                    }
-                }
-            }
-
-            // Parse armor
-            val armorInventory = mutableMapOf<Int, ItemStack>()
-            section.getConfigurationSection("armor")?.let { armorSection ->
-                armorSection.getKeys(false).forEach { slotStr ->
-                    try {
-                        val slot = slotStr.toInt()
-                        val item = armorSection.getItemStack(slotStr)
-                        if (item != null && item.type != Material.AIR) {
-                            armorInventory[slot] = item
-                        }
-                    } catch (e: Exception) {
-                        // Invalid slot
-                    }
-                }
-            }
-
-            // Parse ender chest
-            val enderChest = mutableMapOf<Int, ItemStack>()
-            section.getConfigurationSection("ender-chest")?.let { ecSection ->
-                ecSection.getKeys(false).forEach { slotStr ->
-                    try {
-                        val slot = slotStr.toInt()
-                        val item = ecSection.getItemStack(slotStr)
-                        if (item != null && item.type != Material.AIR) {
-                            enderChest[slot] = item
-                        }
-                    } catch (e: Exception) {
-                        // Invalid slot
-                    }
-                }
-            }
-
-            // Parse potion effects
-            val potionEffects = mutableListOf<PotionEffect>()
-            section.getConfigurationSection("potion-effects")?.let { effectsSection ->
-                effectsSection.getKeys(false).forEach { effectName ->
-                    try {
-                        val effectType = PotionEffectCompat.getByName(effectName)
-                        if (effectType != null) {
-                            val effectData = effectsSection.getConfigurationSection(effectName)
-                            val duration = effectData?.getInt("duration", 600) ?: 600
-                            val amplifier = effectData?.getInt("amplifier", 0) ?: 0
-                            potionEffects.add(PotionEffect(effectType, duration, amplifier))
-                        }
-                    } catch (e: Exception) {
-                        // Invalid effect
-                    }
-                }
-            }
-
-            // Get player name from file or use UUID
-            val playerName = yaml.getString("player-name") ?: uuid.toString()
-
-            ImportedPlayerData(
-                uuid = uuid,
-                playerName = playerName,
-                sourceGroup = group,
-                gameMode = targetGameMode,
-                mainInventory = mainInventory,
-                armorInventory = armorInventory,
-                offhand = section.getItemStack("offhand"),
-                enderChest = enderChest,
-                health = section.getDouble("health", 20.0),
-                maxHealth = section.getDouble("max-health", 20.0),
-                foodLevel = section.getInt("food-level", 20),
-                saturation = section.getDouble("saturation", 5.0).toFloat(),
-                exhaustion = section.getDouble("exhaustion", 0.0).toFloat(),
-                experience = section.getDouble("exp", 0.0).toFloat(),
-                level = section.getInt("level", 0),
-                totalExperience = section.getInt("total-experience", 0),
-                potionEffects = potionEffects,
-                balance = if (section.contains("balance")) section.getDouble("balance") else null,
-                sourceTimestamp = try {
-                    val timestamp = yaml.getLong("last-modified", 0L)
-                    if (timestamp > 0) Instant.ofEpochMilli(timestamp) else null
-                } catch (e: Exception) {
-                    null
-                },
-                sourceId = id,
-                // PWI-style player state fields
-                isFlying = section.getBoolean("flying", false),
-                allowFlight = section.getBoolean("allow-flight", false),
-                displayName = section.getString("display-name"),
-                fallDistance = section.getDouble("fall-distance", 0.0).toFloat(),
-                fireTicks = section.getInt("fire-ticks", 0),
-                maximumAir = section.getInt("max-air", 300),
-                remainingAir = section.getInt("remaining-air", 300)
-            )
+            val root = JsonParser.parseString(file.readText()).asJsonObject
+            parseProfile(root, uuid, group, targetGameMode, file)
         } catch (e: Exception) {
-            Logging.error("Failed to parse PWI player file: ${playerFile.absolutePath}", e)
+            Logging.error("Failed to parse PWI player file: ${file.absolutePath}", e)
             null
+        }
+    }
+
+    private fun parseProfile(
+        root: JsonObject,
+        uuid: UUID,
+        group: String,
+        gameMode: GameMode,
+        file: File
+    ): ImportedPlayerData {
+        val format = root.get("data-format")?.asInt ?: 3
+        val inventory = root.getAsJsonObject("inventory")
+        val contentsKey = if (inventory?.has("contents") == true) "contents" else "inventory"
+
+        val mainInventory = mutableMapOf<Int, ItemStack>()
+        var offhand: ItemStack? = null
+        readItems(inventory?.getAsJsonArray(contentsKey), format).forEach { (index, item) ->
+            when (index) {
+                in 0..35 -> mainInventory[index] = item
+                // player.inventory.contents also holds the armor (36-39, saved separately as well)
+                // and the off-hand (40).
+                OFFHAND_INDEX -> offhand = item
+            }
+        }
+        val armor = readItems(inventory?.getAsJsonArray("armor"), format).filterKeys { it in 0..3 }
+        val enderChest = readItems(root.getAsJsonArray("ender-chest"), format)
+
+        val stats = root.getAsJsonObject("stats") ?: JsonObject()
+        fun stat(key: String): JsonPrimitive? = stats.get(key)?.takeIf { it.isJsonPrimitive }?.asJsonPrimitive
+
+        // 2.x keeps the effects at the top level, older formats inside "stats".
+        val potions = (root.getAsJsonArray("potion-effects") ?: stats.getAsJsonArray("potion-effects"))
+            ?.mapNotNull { effect ->
+                try {
+                    toBukkit(effect) as? PotionEffect
+                } catch (e: Exception) {
+                    Logging.warning("Skipping an unreadable PWI potion effect: ${e.message}")
+                    null
+                }
+            } ?: emptyList()
+
+        val balance = root.get("balance")?.takeIf { it.isJsonPrimitive }?.asDouble
+            ?: root.getAsJsonObject("economy")?.get("balance")?.asDouble
+
+        val playerName = stat("display-name")?.asString?.takeIf { it.isNotBlank() } ?: uuid.toString()
+
+        return ImportedPlayerData(
+            uuid = uuid,
+            playerName = playerName,
+            sourceGroup = group,
+            gameMode = gameMode,
+            mainInventory = mainInventory,
+            armorInventory = armor,
+            offhand = offhand,
+            enderChest = enderChest,
+            health = stat("health")?.asDouble ?: 20.0,
+            maxHealth = stat("max-health")?.asDouble ?: 20.0,
+            foodLevel = stat("food")?.asInt ?: 20,
+            saturation = stat("saturation")?.asFloat ?: 5.0f,
+            exhaustion = stat("exhaustion")?.asFloat ?: 0.0f,
+            experience = stat("exp")?.asFloat ?: 0.0f,
+            level = stat("level")?.asInt ?: 0,
+            totalExperience = 0,
+            potionEffects = potions,
+            balance = balance,
+            sourceTimestamp = Instant.ofEpochMilli(file.lastModified()),
+            sourceId = id,
+            isFlying = stat("flying")?.asBoolean ?: false,
+            allowFlight = stat("can-fly")?.asBoolean ?: false,
+            displayName = stat("display-name")?.asString,
+            fallDistance = stat("fallDistance")?.asFloat ?: 0.0f,
+            fireTicks = stat("fireTicks")?.asInt ?: 0,
+            maximumAir = stat("maxAir")?.asInt ?: 300,
+            remainingAir = stat("remainingAir")?.asInt ?: 300
+        )
+    }
+
+    /** Reads PWI's `[{index, item}]` arrays into slot -> item, skipping air and unreadable items. */
+    private fun readItems(array: JsonArray?, format: Int): Map<Int, ItemStack> {
+        val result = mutableMapOf<Int, ItemStack>()
+        array?.forEach { element ->
+            try {
+                val obj = element.asJsonObject
+                val index = obj.get("index").asInt
+                val item = when (val raw = obj.get("item")) {
+                    null -> null
+                    is JsonPrimitive -> if (format <= 2) decodeLegacyItem(raw.asString) else null
+                    else -> toBukkit(raw) as? ItemStack
+                }
+                if (item != null && item.type != Material.AIR && item.amount > 0) {
+                    result[index] = item
+                }
+            } catch (e: Exception) {
+                Logging.warning("Skipping an unreadable PWI item: ${e.message}")
+            }
+        }
+        return result
+    }
+
+    /** Data formats 1 and 2: Base64 of a BukkitObjectOutputStream holding one ItemStack ("AIR" for none). */
+    private fun decodeLegacyItem(encoded: String): ItemStack? {
+        if (encoded == "AIR") return null
+        @Suppress("DEPRECATION")
+        return BukkitObjectInputStream(ByteArrayInputStream(Base64.getMimeDecoder().decode(encoded))).use {
+            it.readObject() as? ItemStack
+        }
+    }
+
+    /**
+     * Converts PWI's JSON back into what Bukkit serialized: objects carrying `"=="` become their
+     * ConfigurationSerializable (ItemStack, ItemMeta, PotionEffect, ...), innermost first, exactly
+     * as dumptruckman's SerializationHelper wrote them. Integral numbers stay integers (json-smart
+     * USE_INTEGER_STORAGE), which ItemStack/ItemMeta deserialization relies on.
+     */
+    private fun toBukkit(element: JsonElement): Any? = when {
+        element.isJsonNull -> null
+        element.isJsonArray -> element.asJsonArray.map { toBukkit(it) }
+        element.isJsonObject -> {
+            val map = linkedMapOf<String, Any?>()
+            element.asJsonObject.entrySet().forEach { (key, value) -> map[key] = toBukkit(value) }
+            if (map.containsKey(ConfigurationSerialization.SERIALIZED_TYPE_KEY)) {
+                ConfigurationSerialization.deserializeObject(map)
+            } else {
+                map
+            }
+        }
+        else -> {
+            val primitive = element.asJsonPrimitive
+            when {
+                primitive.isBoolean -> primitive.asBoolean
+                primitive.isNumber -> {
+                    val text = primitive.asString
+                    if (text.contains('.') || text.contains('e') || text.contains('E')) {
+                        primitive.asDouble
+                    } else {
+                        text.toIntOrNull() ?: text.toLongOrNull() ?: primitive.asDouble
+                    }
+                }
+                else -> primitive.asString
+            }
         }
     }
 
@@ -410,7 +305,7 @@ class PwiImportSource(private val plugin: PluginContext) : ImportSource {
         }
 
         val groups = getGroups()
-        val players = getPlayers()
+        val players = playerFolders()
 
         if (groups.isEmpty()) {
             warnings.add("No groups detected in PWI configuration")
@@ -422,10 +317,10 @@ class PwiImportSource(private val plugin: PluginContext) : ImportSource {
 
         // Check for corrupted data files
         var corruptedFiles = 0
-        dataFolder.listFiles()?.filter { it.isDirectory }?.forEach { groupDir ->
-            groupDir.listFiles()?.filter { it.extension == "yml" }?.forEach { playerFile ->
+        players.forEach { (_, dir) ->
+            profileFiles(dir).forEach { file ->
                 try {
-                    YamlConfiguration.loadConfiguration(playerFile)
+                    JsonParser.parseString(file.readText()).asJsonObject
                 } catch (e: Exception) {
                     corruptedFiles++
                 }
@@ -443,5 +338,11 @@ class PwiImportSource(private val plugin: PluginContext) : ImportSource {
             playerCount = players.size,
             groupCount = groups.size
         )
+    }
+
+    private companion object {
+        /** Other files PWI keeps in a player's data folder. */
+        val NON_PROFILE_FILES = setOf("last-logout.json", "last-locations.json")
+        const val OFFHAND_INDEX = 40
     }
 }

@@ -1,475 +1,315 @@
 package sh.pcx.xinventories.internal.import
 
 import sh.pcx.xinventories.PluginContext
+import sh.pcx.xinventories.internal.compat.PotionEffectCompat
 import sh.pcx.xinventories.internal.model.*
 import sh.pcx.xinventories.internal.util.Logging
 import org.bukkit.Bukkit
 import org.bukkit.GameMode
 import org.bukkit.Material
+import org.bukkit.configuration.file.YamlConfiguration
 import org.bukkit.inventory.ItemStack
+import org.bukkit.plugin.Plugin
+import org.bukkit.potion.PotionEffect
+import java.io.ByteArrayOutputStream
+import java.io.DataInputStream
+import java.io.DataOutputStream
 import java.io.File
 import java.io.FileInputStream
-import java.nio.ByteBuffer
-import java.nio.ByteOrder
 import java.time.Instant
 import java.util.UUID
 import java.util.zip.GZIPInputStream
+import java.util.zip.GZIPOutputStream
 
 /**
- * Import source for MyWorlds (MW).
- * Supports file-based import using NBT parsing.
+ * Import source for MyWorlds (plugin name `My_Worlds`, needs BKCommonLib).
  *
  * Repository: https://github.com/bergerhealer/MyWorlds
- * Note: MyWorlds stores player data in vanilla Minecraft NBT format.
  *
- * This implementation provides basic NBT reading capability.
- * For full NBT support, consider using BKCommonLib when available.
+ * MyWorlds keeps one vanilla-format player data file (`<uuid>.dat`, gzipped NBT) per *world
+ * inventory*, in the player data folder of the inventory's shared world:
+ * - Paper 26.x world layout: `<main world>/players/data` for the main world,
+ *   `<dimension folder>/data/my_worlds/playerdata` for every other world;
+ * - older layouts: `<world folder>/playerdata`.
+ * Worlds merged into one inventory are listed in `plugins/My_Worlds/inventories.yml`
+ * (`<name>: {folder: <shared world>, worlds: [...]}`); every other world has its own inventory.
+ * With `useWorldInventories: false` (MyWorlds' default) there is a single inventory, stored in the
+ * main world's file.
+ *
+ * Groups are named after the shared world. Items are converted through Paper's
+ * `ItemStack.deserializeBytes`, so the server's data converter upgrades old item NBT.
  */
 class MyWorldsImportSource(private val plugin: PluginContext) : ImportSource {
 
     override val name: String = "MyWorlds"
     override val id: String = "myworlds"
 
-    private val worldsFolder: File = Bukkit.getWorldContainer()
-
-    override val isAvailable: Boolean
-        get() {
-            // Check if any world has playerdata folder
-            return worldsFolder.listFiles()?.any { worldDir ->
-                worldDir.isDirectory && File(worldDir, "playerdata").exists()
-            } ?: false
-        }
-
-    override val hasApiAccess: Boolean
-        get() {
-            return try {
-                val myWorldsPlugin = Bukkit.getPluginManager().getPlugin("My_Worlds")
-                myWorldsPlugin != null && myWorldsPlugin.isEnabled
-            } catch (e: Exception) {
-                false
-            }
-        }
-
-    override fun getGroups(): List<ImportGroup> {
-        if (hasApiAccess) {
-            return getGroupsFromApi()
-        }
-        return getGroupsFromWorldFolders()
-    }
-
-    private fun getGroupsFromApi(): List<ImportGroup> {
-        return try {
-            // Use reflection to access MyWorlds API
-            val worldInventoryClass = Class.forName("com.bergerkiller.bukkit.mw.WorldInventory")
-            val getAllMethod = worldInventoryClass.getMethod("getAll")
-
-            @Suppress("UNCHECKED_CAST")
-            val inventories = getAllMethod.invoke(null) as? Collection<Any> ?: return getGroupsFromWorldFolders()
-
-            val groups = mutableListOf<ImportGroup>()
-
-            inventories.forEach { inventory ->
-                try {
-                    val getWorldsMethod = inventory.javaClass.getMethod("getWorlds")
-                    @Suppress("UNCHECKED_CAST")
-                    val worlds = getWorldsMethod.invoke(inventory) as? Set<String> ?: emptySet()
-
-                    val getSharedWorldNameMethod = inventory.javaClass.getMethod("getSharedWorldName")
-                    val sharedWorldName = getSharedWorldNameMethod.invoke(inventory) as? String ?: "default"
-
-                    groups.add(ImportGroup(
-                        name = sharedWorldName,
-                        worlds = worlds,
-                        isDefault = false,
-                        metadata = mapOf("type" to "worldinventory")
-                    ))
-                } catch (e: Exception) {
-                    Logging.debug { "Failed to parse MyWorlds inventory group: ${e.message}" }
-                }
-            }
-
-            groups
-        } catch (e: Exception) {
-            Logging.debug { "Failed to get groups from MyWorlds API: ${e.message}" }
-            getGroupsFromWorldFolders()
-        }
-    }
-
-    private fun getGroupsFromWorldFolders(): List<ImportGroup> {
-        val groups = mutableListOf<ImportGroup>()
-
-        // Create a group for each world with player data
-        worldsFolder.listFiles()?.filter { it.isDirectory }?.forEach { worldDir ->
-            val playerDataDir = File(worldDir, "playerdata")
-            if (playerDataDir.exists() && playerDataDir.listFiles()?.isNotEmpty() == true) {
-                groups.add(ImportGroup(
-                    name = worldDir.name,
-                    worlds = setOf(worldDir.name),
-                    isDefault = worldDir.name == "world",
-                    metadata = mapOf("type" to "world")
-                ))
-            }
-        }
-
-        return groups
-    }
-
-    override fun getPlayers(): List<UUID> {
-        val players = mutableSetOf<UUID>()
-
-        worldsFolder.listFiles()?.filter { it.isDirectory }?.forEach { worldDir ->
-            val playerDataDir = File(worldDir, "playerdata")
-            if (playerDataDir.exists()) {
-                playerDataDir.listFiles()?.filter { it.extension == "dat" }?.forEach { datFile ->
-                    try {
-                        val uuidString = datFile.nameWithoutExtension
-                        val uuid = UUID.fromString(uuidString)
-                        players.add(uuid)
-                    } catch (e: Exception) {
-                        // Not a valid UUID file
-                    }
-                }
-            }
-        }
-
-        return players.toList()
-    }
-
-    override fun getPlayerData(uuid: UUID, group: String, gameMode: GameMode?): ImportedPlayerData? {
-        // Find the player data file in the world folder
-        val worldDir = File(worldsFolder, group)
-        val playerDataFile = File(worldDir, "playerdata/$uuid.dat")
-
-        if (!playerDataFile.exists()) {
-            return null
-        }
-
-        return parseNbtPlayerData(playerDataFile, uuid, group, gameMode)
-    }
+    private val myWorldsFolder: File = File(plugin.plugin.dataFolder.parentFile, "My_Worlds")
+    private val worldContainer: File get() = Bukkit.getWorldContainer()
 
     /**
-     * Parses NBT player data file.
-     * This is a simplified NBT parser - for full support, BKCommonLib should be used.
+     * Only MyWorlds' own presence counts. Every vanilla server has player data folders, so finding
+     * one says nothing about MyWorlds having been used.
      */
-    private fun parseNbtPlayerData(file: File, uuid: UUID, group: String, gameMode: GameMode?): ImportedPlayerData? {
-        return try {
-            // Try to use BKCommonLib if available
-            if (hasApiAccess) {
-                return parseNbtWithBkCommonLib(file, uuid, group, gameMode)
-            }
+    override val isAvailable: Boolean
+        get() = Bukkit.getPluginManager().getPlugin("My_Worlds") != null ||
+            (myWorldsFolder.exists() && myWorldsFolder.isDirectory)
 
-            // Fallback to basic NBT parsing
-            parseNbtBasic(file, uuid, group, gameMode)
+    override val hasApiAccess: Boolean
+        get() = api() != null
+
+    // ---------------------------------------------------------------- MyWorlds API (reflection)
+
+    private class Api(val loader: ClassLoader) {
+        fun cls(name: String): Class<*> = Class.forName("com.bergerkiller.bukkit.mw.$name", true, loader)
+    }
+
+    private fun api(): Api? {
+        val myWorlds: Plugin = Bukkit.getPluginManager().getPlugin("My_Worlds")?.takeIf { it.isEnabled } ?: return null
+        return try {
+            Api(myWorlds.javaClass.classLoader).also { it.cls("WorldInventory") }
+        } catch (e: Exception) {
+            Logging.debug { "MyWorlds API unavailable: ${e.message}" }
+            null
+        }
+    }
+
+    /** A MyWorlds world inventory: the shared world holding its data and the worlds using it. */
+    private data class Inventory(val sharedWorld: String, val worlds: Set<String>, val playerFolder: File?)
+
+    private fun inventories(): List<Inventory> {
+        api()?.let { api ->
+            try {
+                return inventoriesFromApi(api)
+            } catch (e: Exception) {
+                Logging.warning("Failed to read MyWorlds inventories through its API, reading files: ${e.message}")
+            }
+        }
+        return inventoriesFromFiles()
+    }
+
+    private fun inventoriesFromApi(api: Api): List<Inventory> {
+        val worldConfig = api.cls("WorldConfig")
+        val getConfig = worldConfig.getMethod("get", String::class.java)
+        val playerFolder = worldConfig.getMethod("getPlayerFolder")
+        fun folderOf(world: String): File? = try {
+            playerFolder.invoke(getConfig.invoke(null, world)) as? File
+        } catch (e: Exception) {
+            null
+        }
+
+        val useWorldInventories = api.cls("MyWorlds").getField("useWorldInventories").getBoolean(null)
+        if (!useWorldInventories) {
+            val main = worldConfig.getMethod("getInventoryMain").invoke(null)
+            val mainName = worldConfig.getField("worldname").get(main) as String
+            return listOf(Inventory(mainName, knownWorlds(), playerFolder.invoke(main) as? File))
+        }
+
+        val inventoryClass = api.cls("WorldInventory")
+        val all = inventoryClass.getMethod("getAll").invoke(null) as Collection<*>
+        return all.filterNotNull().mapNotNull { inv ->
+            @Suppress("UNCHECKED_CAST")
+            val worlds = (inventoryClass.getMethod("getWorlds").invoke(inv) as Collection<String>).toSet()
+            val shared = inventoryClass.getMethod("getSharedWorldName").invoke(inv) as? String
+            if (worlds.isEmpty() || shared == null) null else Inventory(shared, worlds, folderOf(shared))
+        }.distinctBy { it.sharedWorld.lowercase() }
+    }
+
+    private fun inventoriesFromFiles(): List<Inventory> {
+        val config = File(myWorldsFolder, "config.yml").takeIf { it.exists() }?.let { YamlConfiguration.loadConfiguration(it) }
+        val worlds = knownWorlds()
+        val vanillaMain = Bukkit.getWorlds().firstOrNull()?.name ?: "world"
+
+        if (config?.getBoolean("useWorldInventories", false) != true) {
+            return listOf(Inventory(vanillaMain, worlds, playerFolderFromFiles(vanillaMain, vanillaMain)))
+        }
+
+        val result = mutableListOf<Inventory>()
+        val covered = mutableSetOf<String>()
+        File(myWorldsFolder, "inventories.yml").takeIf { it.exists() }?.let { file ->
+            val yaml = YamlConfiguration.loadConfiguration(file)
+            yaml.getKeys(false).forEach { key ->
+                val node = yaml.getConfigurationSection(key) ?: return@forEach
+                val shared = node.getString("folder") ?: return@forEach
+                val members = node.getStringList("worlds").toSet()
+                if (members.isEmpty()) return@forEach
+                result.add(Inventory(shared, members, playerFolderFromFiles(shared, vanillaMain)))
+                covered.addAll(members.map { it.lowercase() })
+            }
+        }
+        // Every world not merged into a shared inventory keeps its own.
+        worlds.filter { it.lowercase() !in covered }.forEach { world ->
+            result.add(Inventory(world, setOf(world), playerFolderFromFiles(world, vanillaMain)))
+        }
+        return result
+    }
+
+    /** Loaded worlds plus the worlds MyWorlds has configured (plugins/My_Worlds/worlds.yml). */
+    private fun knownWorlds(): Set<String> {
+        val worlds = linkedSetOf<String>()
+        Bukkit.getWorlds().forEach { worlds.add(it.name) }
+        File(myWorldsFolder, "worlds.yml").takeIf { it.exists() }?.let { file ->
+            worlds.addAll(YamlConfiguration.loadConfiguration(file).getKeys(false))
+        }
+        return worlds
+    }
+
+    private fun playerFolderFromFiles(world: String, vanillaMain: String): File? {
+        val candidates = mutableListOf<File>()
+        Bukkit.getWorld(world)?.worldFolder?.let { folder ->
+            if (world == vanillaMain) candidates.add(File(folder, "players/data"))
+            candidates.add(File(folder, "data/my_worlds/playerdata"))
+            candidates.add(File(folder, "playerdata"))
+        }
+        val legacyFolder = File(worldContainer, world)
+        if (world == vanillaMain) candidates.add(File(legacyFolder, "players/data"))
+        candidates.add(File(legacyFolder, "playerdata"))
+        return candidates.firstOrNull { it.isDirectory }
+    }
+
+    // ---------------------------------------------------------------- ImportSource
+
+    override fun getGroups(): List<ImportGroup> = inventories().map { inv ->
+        ImportGroup(
+            name = inv.sharedWorld,
+            worlds = inv.worlds,
+            isDefault = inv.sharedWorld == Bukkit.getWorlds().firstOrNull()?.name,
+            metadata = mapOf("type" to "worldinventory")
+        )
+    }
+
+    private fun dataFiles(folder: File?): List<Pair<UUID, File>> =
+        folder?.listFiles { f -> f.isFile && f.extension == "dat" }?.mapNotNull { file ->
+            try {
+                UUID.fromString(file.nameWithoutExtension) to file
+            } catch (e: IllegalArgumentException) {
+                null
+            }
+        } ?: emptyList()
+
+    override fun getPlayers(): List<UUID> =
+        inventories().flatMap { dataFiles(it.playerFolder) }.map { it.first }.distinct()
+
+    override fun getPlayerData(uuid: UUID, group: String, gameMode: GameMode?): ImportedPlayerData? {
+        val inventory = inventories().firstOrNull { it.sharedWorld.equals(group, ignoreCase = true) } ?: return null
+        val file = inventory.playerFolder?.let { File(it, "$uuid.dat") }?.takeIf { it.exists() } ?: return null
+
+        return try {
+            val nbt = readNbtFile(file)
+            // MyWorlds does not separate game modes: the same inventory applies to all of them.
+            toImportedData(nbt, uuid, inventory.sharedWorld, gameMode ?: GameMode.SURVIVAL, file)
         } catch (e: Exception) {
             Logging.error("Failed to parse MyWorlds player data: ${file.absolutePath}", e)
             null
         }
     }
 
-    private fun parseNbtWithBkCommonLib(file: File, uuid: UUID, group: String, gameMode: GameMode?): ImportedPlayerData? {
-        return try {
-            val commonTagCompoundClass = Class.forName("com.bergerkiller.bukkit.common.nbt.CommonTagCompound")
-            val readFromFileMethod = commonTagCompoundClass.getMethod("readFromFile", File::class.java)
+    private fun toImportedData(
+        nbt: Map<String, Any>,
+        uuid: UUID,
+        group: String,
+        gameMode: GameMode,
+        file: File
+    ): ImportedPlayerData {
+        val dataVersion = (nbt["DataVersion"] as? Int) ?: 0
 
-            val nbt = readFromFileMethod.invoke(null, file) ?: return null
-
-            // Extract inventory using BKCommonLib
-            val mainInventory = mutableMapOf<Int, ItemStack>()
-            val armorInventory = mutableMapOf<Int, ItemStack>()
-            val enderChest = mutableMapOf<Int, ItemStack>()
-
-            // Get inventory list
-            try {
-                val getListMethod = nbt.javaClass.getMethod("getList", String::class.java)
-                val inventoryList = getListMethod.invoke(nbt, "Inventory")
-
-                if (inventoryList != null) {
-                    val sizeMethod = inventoryList.javaClass.getMethod("size")
-                    val size = sizeMethod.invoke(inventoryList) as Int
-
-                    for (i in 0 until size) {
-                        try {
-                            val getMethod = inventoryList.javaClass.getMethod("get", Int::class.javaPrimitiveType)
-                            val itemTag = getMethod.invoke(inventoryList, i) ?: continue
-
-                            val getByteMethod = itemTag.javaClass.getMethod("getByte", String::class.java)
-                            val slot = (getByteMethod.invoke(itemTag, "Slot") as? Byte)?.toInt() ?: continue
-
-                            // Use BKCommonLib's ItemStack serialization
-                            val itemUtilClass = Class.forName("com.bergerkiller.bukkit.common.utils.ItemUtil")
-                            val deserializeMethod = itemUtilClass.getMethod("deserialize", itemTag.javaClass)
-                            val item = deserializeMethod.invoke(null, itemTag) as? ItemStack ?: continue
-
-                            if (item.type != Material.AIR) {
-                                when {
-                                    slot < 36 -> mainInventory[slot] = item
-                                    slot < 40 -> armorInventory[slot - 36] = item // armor
-                                    slot == 40 -> { /* offhand - handled separately */ }
-                                }
-                            }
-                        } catch (e: Exception) {
-                            // Skip this item
-                        }
-                    }
-                }
-            } catch (e: Exception) {
-                Logging.debug { "Failed to parse inventory from NBT: ${e.message}" }
-            }
-
-            // Get player stats
-            val getIntMethod = nbt.javaClass.getMethod("getInt", String::class.java)
-            val getFloatMethod = nbt.javaClass.getMethod("getFloat", String::class.java)
-            val getShortMethod = nbt.javaClass.getMethod("getShort", String::class.java)
-
-            val health = try {
-                (getFloatMethod.invoke(nbt, "Health") as? Float)?.toDouble() ?: 20.0
-            } catch (e: Exception) { 20.0 }
-
-            val foodLevel = try {
-                getIntMethod.invoke(nbt, "foodLevel") as? Int ?: 20
-            } catch (e: Exception) { 20 }
-
-            val xpLevel = try {
-                getIntMethod.invoke(nbt, "XpLevel") as? Int ?: 0
-            } catch (e: Exception) { 0 }
-
-            val xpP = try {
-                (getFloatMethod.invoke(nbt, "XpP") as? Float) ?: 0.0f
-            } catch (e: Exception) { 0.0f }
-
-            val xpTotal = try {
-                getIntMethod.invoke(nbt, "XpTotal") as? Int ?: 0
-            } catch (e: Exception) { 0 }
-
-            val playerGameMode = try {
-                val gm = getIntMethod.invoke(nbt, "playerGameType") as? Int ?: 0
-                GameMode.entries.getOrNull(gm) ?: GameMode.SURVIVAL
-            } catch (e: Exception) { gameMode ?: GameMode.SURVIVAL }
-
-            val playerName = Bukkit.getOfflinePlayer(uuid).name ?: uuid.toString()
-
-            // PWI-style player state from NBT
-            val fallDistance = try {
-                (getFloatMethod.invoke(nbt, "FallDistance") as? Float) ?: 0.0f
-            } catch (e: Exception) { 0.0f }
-
-            val fireTicks = try {
-                (getShortMethod.invoke(nbt, "Fire") as? Short)?.toInt() ?: 0
-            } catch (e: Exception) { 0 }
-
-            val remainingAir = try {
-                (getShortMethod.invoke(nbt, "Air") as? Short)?.toInt() ?: 300
-            } catch (e: Exception) { 300 }
-
-            // Flying state is in abilities compound
-            var isFlying = false
-            var allowFlight = false
-            try {
-                val getCompoundMethod = nbt.javaClass.getMethod("getCompound", String::class.java)
-                val abilities = getCompoundMethod.invoke(nbt, "abilities")
-                if (abilities != null) {
-                    val getByteMethod = abilities.javaClass.getMethod("getByte", String::class.java)
-                    isFlying = (getByteMethod.invoke(abilities, "flying") as? Byte)?.toInt() == 1
-                    allowFlight = (getByteMethod.invoke(abilities, "mayfly") as? Byte)?.toInt() == 1
-                }
-            } catch (e: Exception) {
-                Logging.debug { "Failed to parse abilities from NBT: ${e.message}" }
-            }
-
-            ImportedPlayerData(
-                uuid = uuid,
-                playerName = playerName,
-                sourceGroup = group,
-                gameMode = playerGameMode,
-                mainInventory = mainInventory,
-                armorInventory = armorInventory,
-                offhand = null,
-                enderChest = enderChest,
-                health = health,
-                maxHealth = 20.0,
-                foodLevel = foodLevel,
-                saturation = 5.0f,
-                exhaustion = 0.0f,
-                experience = xpP,
-                level = xpLevel,
-                totalExperience = xpTotal,
-                potionEffects = emptyList(),
-                balance = null,
-                sourceTimestamp = try {
-                    Instant.ofEpochMilli(file.lastModified())
-                } catch (e: Exception) { null },
-                sourceId = id,
-                isFlying = isFlying,
-                allowFlight = allowFlight,
-                fallDistance = fallDistance,
-                fireTicks = fireTicks,
-                remainingAir = remainingAir
-            )
-        } catch (e: Exception) {
-            Logging.debug { "Failed to parse NBT with BKCommonLib: ${e.message}" }
-            null
-        }
-    }
-
-    /**
-     * Basic NBT parsing without external libraries.
-     * This is a simplified implementation that handles common cases.
-     */
-    private fun parseNbtBasic(file: File, uuid: UUID, group: String, gameMode: GameMode?): ImportedPlayerData? {
-        return try {
-            val nbtData = FileInputStream(file).use { fis ->
-                GZIPInputStream(fis).use { gis ->
-                    gis.readBytes()
-                }
-            }
-
-            // Parse NBT structure
-            val buffer = ByteBuffer.wrap(nbtData).order(ByteOrder.BIG_ENDIAN)
-
-            // Skip root compound tag header
-            if (buffer.get() != 10.toByte()) {
-                Logging.debug { "Invalid NBT format - expected compound tag" }
-                return null
-            }
-
-            // Skip root name
-            val nameLength = buffer.short.toInt()
-            buffer.position(buffer.position() + nameLength)
-
-            // Parse the compound
-            val nbt = parseNbtCompound(buffer)
-
-            // Extract data from parsed NBT
-            val health = (nbt["Health"] as? Float)?.toDouble() ?: 20.0
-            val foodLevel = (nbt["foodLevel"] as? Int) ?: 20
-            val xpLevel = (nbt["XpLevel"] as? Int) ?: 0
-            val xpP = (nbt["XpP"] as? Float) ?: 0.0f
-            val xpTotal = (nbt["XpTotal"] as? Int) ?: 0
-
-            // PWI-style player state
-            val fallDistance = (nbt["FallDistance"] as? Float) ?: 0.0f
-            val fireTicks = (nbt["Fire"] as? Short)?.toInt() ?: 0
-            val remainingAir = (nbt["Air"] as? Short)?.toInt() ?: 300
-
-            // Flying state from abilities compound
+        val mainInventory = mutableMapOf<Int, ItemStack>()
+        val armor = mutableMapOf<Int, ItemStack>()
+        var offhand: ItemStack? = null
+        listOf(nbt["Inventory"]).filterIsInstance<NbtList>().flatMap { it.items }.forEach { entry ->
             @Suppress("UNCHECKED_CAST")
-            val abilities = nbt["abilities"] as? Map<String, Any>
-            val isFlying = (abilities?.get("flying") as? Byte)?.toInt() == 1
-            val allowFlight = (abilities?.get("mayfly") as? Byte)?.toInt() == 1
-
-            val playerName = Bukkit.getOfflinePlayer(uuid).name ?: uuid.toString()
-
-            // Note: Full inventory parsing requires complete NBT support
-            // This basic implementation returns empty inventories
-            ImportedPlayerData(
-                uuid = uuid,
-                playerName = playerName,
-                sourceGroup = group,
-                gameMode = gameMode ?: GameMode.SURVIVAL,
-                mainInventory = emptyMap(),
-                armorInventory = emptyMap(),
-                offhand = null,
-                enderChest = emptyMap(),
-                health = health,
-                maxHealth = 20.0,
-                foodLevel = foodLevel,
-                saturation = 5.0f,
-                exhaustion = 0.0f,
-                experience = xpP,
-                level = xpLevel,
-                totalExperience = xpTotal,
-                potionEffects = emptyList(),
-                balance = null,
-                sourceTimestamp = Instant.ofEpochMilli(file.lastModified()),
-                sourceId = id,
-                metadata = mapOf("warning" to "Basic NBT parsing - inventory may be incomplete"),
-                isFlying = isFlying,
-                allowFlight = allowFlight,
-                fallDistance = fallDistance,
-                fireTicks = fireTicks,
-                remainingAir = remainingAir
-            )
-        } catch (e: Exception) {
-            Logging.debug { "Failed to parse NBT data: ${e.message}" }
-            null
+            val tag = entry as? Map<String, Any> ?: return@forEach
+            val slot = (tag["Slot"] as? Byte)?.toInt() ?: return@forEach
+            val item = toItemStack(tag, dataVersion) ?: return@forEach
+            when (slot) {
+                in 0..35 -> mainInventory[slot] = item
+                in 100..103 -> armor[slot - 100] = item // pre-1.21.5: 100 = feet ... 103 = head
+                -106 -> offhand = item
+            }
         }
-    }
-
-    /**
-     * Parses an NBT compound tag from a ByteBuffer.
-     */
-    private fun parseNbtCompound(buffer: ByteBuffer): Map<String, Any> {
-        val result = mutableMapOf<String, Any>()
-
-        while (buffer.hasRemaining()) {
-            val tagType = buffer.get().toInt()
-            if (tagType == 0) break // End tag
-
-            // Read name
-            val nameLength = buffer.short.toInt()
-            val nameBytes = ByteArray(nameLength)
-            buffer.get(nameBytes)
-            val name = String(nameBytes, Charsets.UTF_8)
-
-            // Parse value based on tag type
-            val value = parseNbtTag(buffer, tagType)
-            if (value != null) {
-                result[name] = value
+        // 1.21.5+: armor and off-hand live in the "equipment" compound.
+        (nbt["equipment"] as? Map<*, *>)?.forEach { (key, value) ->
+            @Suppress("UNCHECKED_CAST")
+            val item = (value as? Map<String, Any>)?.let { toItemStack(it, dataVersion) } ?: return@forEach
+            when (key) {
+                "feet" -> armor[0] = item
+                "legs" -> armor[1] = item
+                "chest" -> armor[2] = item
+                "head" -> armor[3] = item
+                "offhand" -> offhand = item
             }
         }
 
-        return result
+        val enderChest = mutableMapOf<Int, ItemStack>()
+        (nbt["EnderItems"] as? NbtList)?.items?.forEach { entry ->
+            @Suppress("UNCHECKED_CAST")
+            val tag = entry as? Map<String, Any> ?: return@forEach
+            val slot = (tag["Slot"] as? Byte)?.toInt() ?: return@forEach
+            toItemStack(tag, dataVersion)?.let { enderChest[slot] = it }
+        }
+
+        @Suppress("UNCHECKED_CAST")
+        val abilities = nbt["abilities"] as? Map<String, Any>
+        val maxHealth = (nbt["attributes"] as? NbtList)?.items?.filterIsInstance<Map<*, *>>()
+            ?.firstOrNull { it["id"] == "minecraft:max_health" || it["Name"] == "minecraft:generic.max_health" }
+            ?.let { (it["base"] ?: it["Base"]) as? Double } ?: 20.0
+
+        return ImportedPlayerData(
+            uuid = uuid,
+            playerName = Bukkit.getOfflinePlayer(uuid).name ?: uuid.toString(),
+            sourceGroup = group,
+            gameMode = gameMode,
+            mainInventory = mainInventory,
+            armorInventory = armor,
+            offhand = offhand,
+            enderChest = enderChest,
+            health = (nbt["Health"] as? Float)?.toDouble() ?: 20.0,
+            maxHealth = maxHealth,
+            foodLevel = (nbt["foodLevel"] as? Int) ?: 20,
+            saturation = (nbt["foodSaturationLevel"] as? Float) ?: 5.0f,
+            exhaustion = (nbt["foodExhaustionLevel"] as? Float) ?: 0.0f,
+            experience = (nbt["XpP"] as? Float) ?: 0.0f,
+            level = (nbt["XpLevel"] as? Int) ?: 0,
+            totalExperience = (nbt["XpTotal"] as? Int) ?: 0,
+            potionEffects = potionEffects(nbt),
+            balance = null,
+            sourceTimestamp = Instant.ofEpochMilli(file.lastModified()),
+            sourceId = id,
+            isFlying = (abilities?.get("flying") as? Byte)?.toInt() == 1,
+            allowFlight = (abilities?.get("mayfly") as? Byte)?.toInt() == 1,
+            fallDistance = ((nbt["fall_distance"] as? Double)?.toFloat()) ?: (nbt["FallDistance"] as? Float) ?: 0.0f,
+            fireTicks = (nbt["Fire"] as? Short)?.toInt() ?: 0,
+            remainingAir = (nbt["Air"] as? Short)?.toInt() ?: 300
+        )
+    }
+
+    /** 1.20.2+ `active_effects` (`id` = namespaced key) or the older `ActiveEffects`. */
+    private fun potionEffects(nbt: Map<String, Any>): List<PotionEffect> {
+        val list = (nbt["active_effects"] ?: nbt["ActiveEffects"]) as? NbtList ?: return emptyList()
+        return list.items.filterIsInstance<Map<*, *>>().mapNotNull { tag ->
+            try {
+                val type = (tag["id"] as? String)?.let { PotionEffectCompat.getByName(it) } ?: return@mapNotNull null
+                val duration = (tag["duration"] ?: tag["Duration"]) as? Int ?: return@mapNotNull null
+                val amplifier = ((tag["amplifier"] ?: tag["Amplifier"]) as? Byte)?.toInt() ?: 0
+                PotionEffect(type, duration, amplifier)
+            } catch (e: Exception) {
+                null
+            }
+        }
     }
 
     /**
-     * Parses an NBT tag value based on its type.
+     * Turns an item compound from a player file into an ItemStack through Paper's
+     * `deserializeBytes`, which runs the data converter from the file's DataVersion.
      */
-    private fun parseNbtTag(buffer: ByteBuffer, tagType: Int): Any? {
+    private fun toItemStack(tag: Map<String, Any>, dataVersion: Int): ItemStack? {
+        val item = LinkedHashMap(tag)
+        item.remove("Slot")
+        item["DataVersion"] = dataVersion
         return try {
-            when (tagType) {
-                1 -> buffer.get() // Byte
-                2 -> buffer.short // Short
-                3 -> buffer.int // Int
-                4 -> buffer.long // Long
-                5 -> buffer.float // Float
-                6 -> buffer.double // Double
-                7 -> { // Byte array
-                    val length = buffer.int
-                    val bytes = ByteArray(length)
-                    buffer.get(bytes)
-                    bytes
-                }
-                8 -> { // String
-                    val length = buffer.short.toInt()
-                    val bytes = ByteArray(length)
-                    buffer.get(bytes)
-                    String(bytes, Charsets.UTF_8)
-                }
-                9 -> { // List
-                    val itemType = buffer.get().toInt()
-                    val length = buffer.int
-                    val list = mutableListOf<Any?>()
-                    repeat(length) {
-                        list.add(parseNbtTag(buffer, itemType))
-                    }
-                    list
-                }
-                10 -> parseNbtCompound(buffer) // Compound
-                11 -> { // Int array
-                    val length = buffer.int
-                    IntArray(length) { buffer.int }
-                }
-                12 -> { // Long array
-                    val length = buffer.int
-                    LongArray(length) { buffer.long }
-                }
-                else -> {
-                    Logging.debug { "Unknown NBT tag type: $tagType" }
-                    null
-                }
-            }
-        } catch (e: Exception) {
-            Logging.debug { "Failed to parse NBT tag type $tagType: ${e.message}" }
+            ItemStack.deserializeBytes(writeNbt(item)).takeUnless { it.type == Material.AIR || it.amount <= 0 }
+        } catch (e: Throwable) {
+            Logging.warning("Could not convert a MyWorlds item (${tag["id"]}): ${e.message}")
             null
         }
     }
@@ -491,17 +331,18 @@ class MyWorldsImportSource(private val plugin: PluginContext) : ImportSource {
         val warnings = mutableListOf<String>()
 
         if (!isAvailable) {
-            issues.add("No world folders with player data found")
+            issues.add("MyWorlds is not installed and plugins/My_Worlds does not exist")
             return ImportValidationResult(
                 isValid = false,
                 issues = issues
             )
         }
 
-        val groups = getGroups()
-        val players = getPlayers()
+        val inventories = inventories()
+        val files = inventories.flatMap { dataFiles(it.playerFolder) }
+        val players = files.map { it.first }.distinct()
 
-        if (groups.isEmpty()) {
+        if (inventories.isEmpty()) {
             warnings.add("No world inventory groups detected")
         }
 
@@ -509,24 +350,12 @@ class MyWorldsImportSource(private val plugin: PluginContext) : ImportSource {
             warnings.add("No player data files found")
         }
 
-        if (!hasApiAccess) {
-            warnings.add("MyWorlds plugin not loaded - using basic NBT parsing (inventory import may be incomplete)")
-        }
-
-        // Check for corrupted files
-        var corruptedFiles = 0
-        worldsFolder.listFiles()?.filter { it.isDirectory }?.forEach { worldDir ->
-            val playerDataDir = File(worldDir, "playerdata")
-            if (playerDataDir.exists()) {
-                playerDataDir.listFiles()?.filter { it.extension == "dat" }?.forEach { datFile ->
-                    try {
-                        FileInputStream(datFile).use { fis ->
-                            GZIPInputStream(fis).use { it.readBytes() }
-                        }
-                    } catch (e: Exception) {
-                        corruptedFiles++
-                    }
-                }
+        val corruptedFiles = files.count { (_, file) ->
+            try {
+                readNbtFile(file)
+                false
+            } catch (e: Exception) {
+                true
             }
         }
 
@@ -539,7 +368,111 @@ class MyWorldsImportSource(private val plugin: PluginContext) : ImportSource {
             issues = issues,
             warnings = warnings,
             playerCount = players.size,
-            groupCount = groups.size
+            groupCount = inventories.size
         )
+    }
+
+    // ---------------------------------------------------------------- NBT
+
+    /** An NBT list, keeping its element type so it can be written back unchanged. */
+    private class NbtList(val elementType: Int, val items: List<Any>)
+
+    private fun readNbtFile(file: File): Map<String, Any> =
+        DataInputStream(GZIPInputStream(FileInputStream(file)).buffered()).use { input ->
+            val type = input.readByte().toInt()
+            require(type == TAG_COMPOUND) { "Not an NBT compound: ${file.name}" }
+            input.readUTF() // root name
+            @Suppress("UNCHECKED_CAST")
+            readTag(input, TAG_COMPOUND) as Map<String, Any>
+        }
+
+    private fun readTag(input: DataInputStream, type: Int): Any = when (type) {
+        1 -> input.readByte()
+        2 -> input.readShort()
+        3 -> input.readInt()
+        4 -> input.readLong()
+        5 -> input.readFloat()
+        6 -> input.readDouble()
+        7 -> ByteArray(input.readInt()).also { input.readFully(it) }
+        8 -> input.readUTF()
+        9 -> {
+            val elementType = input.readByte().toInt()
+            val size = input.readInt()
+            NbtList(elementType, List(size) { readTag(input, elementType) })
+        }
+        TAG_COMPOUND -> {
+            val map = linkedMapOf<String, Any>()
+            while (true) {
+                val tagType = input.readByte().toInt()
+                if (tagType == 0) break
+                val key = input.readUTF()
+                map[key] = readTag(input, tagType)
+            }
+            map
+        }
+        11 -> IntArray(input.readInt()) { input.readInt() }
+        12 -> LongArray(input.readInt()) { input.readLong() }
+        else -> throw IllegalArgumentException("Unknown NBT tag type $type")
+    }
+
+    /** Gzipped NBT of [root], the format Paper's ItemStack.deserializeBytes reads. */
+    private fun writeNbt(root: Map<String, Any>): ByteArray {
+        val bytes = ByteArrayOutputStream()
+        DataOutputStream(GZIPOutputStream(bytes)).use { out ->
+            out.writeByte(TAG_COMPOUND)
+            out.writeUTF("")
+            writePayload(out, root)
+        }
+        return bytes.toByteArray()
+    }
+
+    private fun typeOf(value: Any): Int = when (value) {
+        is Byte -> 1
+        is Short -> 2
+        is Int -> 3
+        is Long -> 4
+        is Float -> 5
+        is Double -> 6
+        is ByteArray -> 7
+        is String -> 8
+        is NbtList -> 9
+        is Map<*, *> -> TAG_COMPOUND
+        is IntArray -> 11
+        is LongArray -> 12
+        else -> throw IllegalArgumentException("Not an NBT value: ${value.javaClass}")
+    }
+
+    private fun writePayload(out: DataOutputStream, value: Any) {
+        when (value) {
+            is Byte -> out.writeByte(value.toInt())
+            is Short -> out.writeShort(value.toInt())
+            is Int -> out.writeInt(value)
+            is Long -> out.writeLong(value)
+            is Float -> out.writeFloat(value)
+            is Double -> out.writeDouble(value)
+            is ByteArray -> { out.writeInt(value.size); out.write(value) }
+            is String -> out.writeUTF(value)
+            is NbtList -> {
+                out.writeByte(value.elementType)
+                out.writeInt(value.items.size)
+                value.items.forEach { writePayload(out, it) }
+            }
+            is Map<*, *> -> {
+                value.forEach { (key, child) ->
+                    if (child == null) return@forEach
+                    out.writeByte(typeOf(child))
+                    out.writeUTF(key.toString())
+                    writePayload(out, child)
+                }
+                out.writeByte(0)
+            }
+            is IntArray -> { out.writeInt(value.size); value.forEach { out.writeInt(it) } }
+            is LongArray -> { out.writeInt(value.size); value.forEach { out.writeLong(it) } }
+            else -> throw IllegalArgumentException("Not an NBT value: ${value.javaClass}")
+        }
+    }
+
+    private companion object {
+        const val TAG_COMPOUND = 10
     }
 }
