@@ -8,7 +8,7 @@
 
 [B]Changed[/B]
 [LIST]
-[*]Built against Paper 26.3 (unit tests on MockBukkit 26.2). The same jar still emits Java 21 bytecode and runs on every server from 1.20.5 up.
+[*]Paper 26.3 support. The jar is compiled against the 26.1.2 API on purpose (Paper 26.3 ships Adventure 5; a jar built against it would crash on 26.1/26.2) and tested on 26.3, so one jar runs on every server from 1.20.5 up.
 [*]Menus still block every way of pulling a button or display item out (shift-click, hotbar and offhand swaps, drop, double-click collect, creative middle-click clone, drag). This is now covered by an end-to-end suite that drives each path with a real client against Paper 26.1.2.
 [/LIST]
 

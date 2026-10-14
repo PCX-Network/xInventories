@@ -65,10 +65,16 @@ repositories {
 }
 
 dependencies {
-    // Paper API - targeting 26.3 (supports 1.20.5+ at runtime via VersionDetector/compat shims)
+    // Paper API for the MAIN source set: the OLDEST 26.x API, on purpose. The jar must run on every
+    // server from 1.20.5 to the current 26.3. Paper 26.3 ships Adventure 5, and a jar compiled against
+    // it binds TextComponent.Builder.build() to the Adventure-5 descriptor, which throws
+    // NoSuchMethodError on 26.1/26.2 (Adventure 4) and breaks every command. Adventure 5 keeps the
+    // Adventure-4 descriptors as bridges, so compiling against 26.1.2 runs everywhere. DO NOT bump this
+    // to 26.3; bump the TEST classpath instead (see testImplementation below), which is where the
+    // newest server is exercised (MockBukkit 26.3 + the plugwright suite on Paper 26.3).
     // Note: Paper switched to year-based versioning at 26.1; the coordinate format changed from
     // "{VERSION}-R0.1-SNAPSHOT" to "{VERSION}.build.{N}-stable" (no more -SNAPSHOT).
-    compileOnly 'io.papermc.paper:paper-api:26.3.build.181-stable'
+    compileOnly 'io.papermc.paper:paper-api:26.1.2.build.71-stable'
 
     // Kotlin - provided by Paper 1.21+, loaded via plugin.yml libraries for 1.20.5-1.20.6
     compileOnly 'org.jetbrains.kotlin:kotlin-stdlib'
@@ -123,6 +129,7 @@ dependencies {
     testImplementation "com.github.ben-manes.caffeine:caffeine:${caffeineVersion}"
     testImplementation "com.zaxxer:HikariCP:${hikariVersion}"
     testImplementation "redis.clients:jedis:${jedisVersion}"
+    // Tests run against the NEWEST Paper API (what MockBukkit 26.x targets); main stays on 26.1.2, see above.
     testImplementation 'io.papermc.paper:paper-api:26.3.build.181-stable'
     // Newest MockBukkit line available (there is no mockbukkit-v26.3 yet).
     testImplementation('org.mockbukkit.mockbukkit:mockbukkit-v26.2:4.117.0') {

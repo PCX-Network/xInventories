@@ -12,7 +12,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **Restriction hopper** - The item-restrictions menu's "drop an item on the hopper" action works again for the same reason (an item can be picked up from the admin's own inventory while a menu is open).
 
 ### Changed
-- **Built against Paper 26.3** (`paper-api 26.3.build.181-stable`, MockBukkit 26.2 for unit tests). Still Java 21 bytecode, still runs on 1.20.5 - 26.3.
+- **Paper 26.3 support.** The main source set stays compiled against `paper-api 26.1.2` on purpose: Paper 26.3 ships Adventure 5, and a jar compiled against it throws `NoSuchMethodError` on 26.1/26.2 servers (`TextComponent.Builder.build()`), while Adventure 5 keeps the Adventure-4 descriptors as bridges. Tests run on the 26.3 API. Still Java 21 bytecode, runs on 1.20.5 - 26.3.
 - Menus still block every way of pulling a button or display item out (shift-click, hotbar and offhand swaps, drop, double-click collect, creative middle-click clone, drag); this is now covered by an end-to-end suite that drives each path with a real client.
 
 ## [1.2.0] - 2026-06-18

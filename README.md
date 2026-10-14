@@ -94,7 +94,7 @@ A powerful per-world inventory management plugin for Paper and Spigot servers (1
 
 ## Requirements
 
-- **Paper 1.20.5+** or **Spigot 1.20.5+** (1.20.5 - 26.3 supported; built against Paper API 26.3)
+- **Paper 1.20.5+** or **Spigot 1.20.5+** (1.20.5 - 26.3 supported; compiled against the 26.1.2 API so one jar runs everywhere, tested on 26.3)
 - **Java 21+** — the plugin jar targets Java 21 and runs on Java 21 servers (1.20.5 - 1.21.x). Minecraft 26.1+ servers require Java 25 per Mojang; the same jar runs there too.
 
 > **Note:** While both Paper and Spigot are supported, Paper is recommended for optimal performance and access to all features.
