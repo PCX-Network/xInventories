@@ -354,9 +354,8 @@ class CommandManagerTest {
             val subcommand = commandManager.getSubcommand("migrate")
 
             assertNotNull(subcommand)
-            // Note: Both ConvertCommand and ImportCommand have 'migrate' as alias
-            // The last one registered wins - ImportCommand
-            assertEquals("import", subcommand!!.name)
+            // 'migrate' belongs to convert (storage migration); the import command no longer claims it.
+            assertEquals("convert", subcommand!!.name)
         }
 
         @Test

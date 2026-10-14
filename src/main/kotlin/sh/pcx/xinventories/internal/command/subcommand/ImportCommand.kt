@@ -18,7 +18,7 @@ import org.bukkit.command.CommandSender
 class ImportCommand(private val importService: ImportService) : Subcommand {
 
     override val name = "import"
-    override val aliases = listOf("migrate")
+    override val aliases = emptyList<String>()
     override val permission = "xinventories.command.import"
     override val usage = "/xinv import detect | preview <plugin> | <plugin> [--confirm] | <plugin> mapping"
     override val description = "Import data from other inventory plugins"
