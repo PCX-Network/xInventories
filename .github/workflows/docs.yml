@@ -47,8 +47,6 @@ jobs:
 
       - name: Bootstrap pcxgg forks
         uses: ./.github/actions/bootstrap-forks
-        with:
-          mockbukkit-ref: ''
 
       - name: Grant execute permission for gradlew
         run: chmod +x gradlew
